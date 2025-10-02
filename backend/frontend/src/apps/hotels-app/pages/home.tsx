@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import { useAuth } from '@/shared/hooks/useAuth';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Badge } from '@/shared/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/shared/components/ui/dialog';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Switch } from '@/shared/components/ui/switch';
+import { useMutation } from '@tanstack/react-query';
 import { 
   Hotel, 
   Plus, 
@@ -32,52 +33,15 @@ import {
   PartyPopper,
   Send,
   Clock,
-  Building2
+  Building2,
+  Home
 } from 'lucide-react';
 import LocationAutocomplete from '@/shared/components/LocationAutocomplete';
 import apiService from '@/services/api';
 import { useToast } from '@/shared/hooks/use-toast';
-
-interface Hotel {
-  id: string;
-  name: string;
-  managerId: string;
-  address: string;
-  description?: string;
-  phone?: string;
-  email?: string;
-  website?: string;
-  checkInTime: string;
-  checkOutTime: string;
-  images?: string[];
-  amenities?: string[];
-  rating: number;
-  reviewCount: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface RoomType {
-  id: string;
-  hotelId: string;
-  name: string;
-  type: string;
-  description?: string;
-  pricePerNight: number;
-  maxOccupancy: number;
-  totalRooms: number;
-  availableRooms: number;
-  images?: string[];
-  amenities?: string[];
-  size?: number;
-  bedType?: string;
-  hasBalcony: boolean;
-  hasSeaView: boolean;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+import { useAccommodations } from '@/shared/hooks/useAccommodations';
+import { AppUser } from '@/shared/hooks/useAuth';
+import HotelCreationWizard from '@/components/hotel-wizard/HotelCreationWizard';
 
 interface HotelEvent {
   id: string;
@@ -91,6 +55,21 @@ interface HotelEvent {
   maxTickets: number;
   ticketsSold: number;
   status: string;
+  organizerId?: string;
+}
+
+interface HotelStats {
+  totalBookings: number;
+  monthlyRevenue: number;
+  averageRating: number;
+  averageOccupancy: number;
+  totalEvents: number;
+  upcomingEvents: number;
+  activePartnerships: number;
+  partnershipEarnings: number;
+  totalRoomTypes: number;
+  totalRooms: number;
+  availableRooms: number;
 }
 
 interface DriverPartnership {
@@ -114,11 +93,48 @@ interface ChatMessage {
   isHotel: boolean;
 }
 
+interface RoomType {
+  id: string;
+  hotelId: string;
+  name: string;
+  type: string;
+  description?: string;
+  pricePerNight: number;
+  totalRooms: number;
+  availableRooms: number;
+  images?: string[];
+  amenities?: string[];
+  size?: number;
+  bedType?: string;
+  hasBalcony: boolean;
+  hasSeaView: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  address?: string;
+  rating?: number;
+  reviewCount?: number;
+}
+
+interface ExtendedCreateAccommodationRequest {
+  name: string;
+  type: string;
+  address?: string;
+  description?: string;
+  pricePerNight?: number;
+  maxGuests?: number;
+  amenities?: string[];
+  images?: string[];
+  bedrooms?: number;
+  bathrooms?: number;
+  isAvailable?: boolean;
+  unavailableDates?: string[];
+}
+
 export default function HotelsHome() {
-  const { user } = useAuth();
+  const { user } = useAuth() as { user: AppUser | null };
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [showCreateRoomType, setShowCreateRoomType] = useState(false);
   const [showHotelSetup, setShowHotelSetup] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
   const [showCreatePartnership, setShowCreatePartnership] = useState(false);
@@ -126,32 +142,22 @@ export default function HotelsHome() {
   const [activeTab, setActiveTab] = useState('accommodations');
   const [selectedChat, setSelectedChat] = useState<number | null>(null);
   const [newMessage, setNewMessage] = useState('');
-  
-  // Form states
-  const [hotelForm, setHotelForm] = useState({
+
+  // Estados para o Hotel Wizard
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<RoomType | null>(null);
+  const [wizardMode, setWizardMode] = useState<'create' | 'edit'>('create');
+
+  const [accommodationForm, setAccommodationForm] = useState<ExtendedCreateAccommodationRequest>({
     name: '',
     address: '',
+    type: 'hotel_room',
+    pricePerNight: 0,
+    amenities: [],
     description: '',
-    phone: '',
-    email: '',
-    website: '',
-    checkInTime: '14:00',
-    checkOutTime: '12:00',
-    amenities: ''
-  });
-
-  const [roomTypeForm, setRoomTypeForm] = useState({
-    name: '',
-    type: 'standard',
-    description: '',
-    pricePerNight: '',
-    maxOccupancy: 2,
-    totalRooms: 1,
-    size: '',
-    bedType: '',
-    amenities: '',
-    hasBalcony: false,
-    hasSeaView: false
+    images: [],
+    isAvailable: true,
+    maxGuests: 2,
   });
 
   const [eventForm, setEventForm] = useState({
@@ -174,70 +180,62 @@ export default function HotelsHome() {
     targetRoutes: [] as string[]
   });
 
-  // Buscar perfil do hotel
+  // Fetch hotel profile
   const { data: hotelProfile } = useQuery({
-    queryKey: ['hotel-profile', user?.uid],
+    queryKey: ['hotel-profile', user?.id],
     queryFn: () => apiService.getUserProfile(),
-    enabled: !!user?.uid
+    enabled: !!user?.id
   });
 
-  // Buscar acomodações do hotel
-  const { data: accommodations } = useQuery({
-    queryKey: ['hotel-accommodations', user?.uid],
-    queryFn: async () => {
+  // Fetch hotel stats
+  const { data: hotelStats } = useQuery<HotelStats>({
+    queryKey: ['hotel-stats', user?.id],
+    queryFn: async (): Promise<HotelStats> => {
       try {
-        const response = await apiService.searchAccommodations({
-          location: '',
-          checkIn: '',
-          checkOut: '',
-          guests: 1
-        });
-        return (response as any)?.data?.accommodations || [];
+        return {
+          totalBookings: 73,
+          monthlyRevenue: 224500,
+          averageRating: 4.8,
+          averageOccupancy: 82,
+          totalEvents: 1,
+          upcomingEvents: 1,
+          activePartnerships: 2,
+          partnershipEarnings: 11000,
+          totalRoomTypes: 2,
+          totalRooms: 8,
+          availableRooms: 6
+        };
       } catch (error) {
-        return [
-          {
-            id: '1',
-            name: 'Quarto Duplo Vista Mar',
-            type: 'hotel_room',
-            address: 'Costa do Sol, Maputo',
-            pricePerNight: '2500',
-            rating: 4.7,
-            reviewCount: 23,
-            isAvailable: true,
-            totalBookings: 45,
-            monthlyRevenue: 112500,
-            occupancyRate: 75,
-            images: [],
-            amenities: ['Wi-Fi', 'Ar Condicionado', 'Vista Mar'],
-            description: 'Quarto confortável com vista para o mar'
-          },
-          {
-            id: '2',
-            name: 'Suite Executiva',
-            type: 'hotel_suite', 
-            address: 'Costa do Sol, Maputo',
-            pricePerNight: '4000',
-            rating: 4.9,
-            reviewCount: 18,
-            isAvailable: true,
-            totalBookings: 28,
-            monthlyRevenue: 112000,
-            occupancyRate: 85,
-            images: [],
-            amenities: ['Wi-Fi', 'Ar Condicionado', 'Vista Mar', 'Varanda'],
-            description: 'Suite luxuosa para executivos'
-          }
-        ];
+        return {
+          totalBookings: 73,
+          monthlyRevenue: 224500,
+          averageRating: 4.8,
+          averageOccupancy: 82,
+          totalEvents: 1,
+          upcomingEvents: 1,
+          activePartnerships: 2,
+          partnershipEarnings: 11000,
+          totalRoomTypes: 2,
+          totalRooms: 8,
+          availableRooms: 6
+        };
       }
     },
-    enabled: !!user?.uid
+    enabled: !!user?.id
   });
 
-  // Buscar eventos do hotel
-  const { data: hotelEvents } = useQuery({
-    queryKey: ['hotel-events', user?.uid],
-    queryFn: () => apiService.getEvents?.() || Promise.resolve([]),
-    enabled: !!user?.uid,
+  // Fetch hotel events
+  const { data: hotelEvents } = useQuery<HotelEvent[]>({
+    queryKey: ['hotel-events', user?.id],
+    queryFn: async (): Promise<HotelEvent[]> => {
+      try {
+        const result = await (apiService.getEvents?.() || Promise.resolve([]));
+        return Array.isArray(result) ? result : [];
+      } catch (error) {
+        return [];
+      }
+    },
+    enabled: !!user?.id,
     initialData: [
       {
         id: '1',
@@ -255,7 +253,29 @@ export default function HotelsHome() {
     ]
   });
 
-  // Dados de parcerias e chats
+  // Use accommodations hook
+  const { 
+    accommodations: realAccommodations, 
+    loading: accommodationsLoading, 
+    createAccommodation,
+    error: accommodationsError 
+  } = useAccommodations();
+
+  // Mutation for creating event
+  const createEventMutation = useMutation({
+    mutationFn: (data: any) => apiService.createEvent?.(data) || Promise.resolve({ success: true }),
+    onSuccess: () => {
+      toast({ title: 'Sucesso', description: 'Evento criado com sucesso!' });
+      setShowCreateEvent(false);
+      setEventForm({ title: '', description: '', eventType: 'festival', venue: '', startDate: '', endDate: '', ticketPrice: 0, maxTickets: 100 });
+      queryClient.invalidateQueries({ queryKey: ['hotel-events'] });
+    },
+    onError: () => {
+      toast({ title: 'Erro', description: 'Erro ao criar evento', variant: 'destructive' });
+    }
+  });
+
+  // Partnership and chat data
   const driverPartnerships: DriverPartnership[] = [
     {
       id: '1',
@@ -321,142 +341,185 @@ export default function HotelsHome() {
     ]
   };
 
-  // Mock hotel data - em produção seria buscado da API
-  const hotel: Hotel | null = {
-    id: '1',
-    name: 'Hotel Vista Mar Maputo',
-    managerId: user?.uid || '',
-    address: 'Costa do Sol, Maputo',
-    description: 'Hotel boutique com vista privilegiada para o mar',
-    phone: '+258 21 123 456',
-    email: 'reservas@hotelvistamar.co.mz',
-    website: 'www.hotelvistamar.co.mz',
-    checkInTime: '14:00',
-    checkOutTime: '12:00',
-    images: [],
-    amenities: ['Wi-Fi Gratuito', 'Piscina', 'Restaurante', 'Spa', 'Estacionamento'],
-    rating: 4.8,
-    reviewCount: 127,
-    isActive: true,
-    createdAt: '2024-01-01',
-    updatedAt: '2024-09-07'
-  };
-
-  // Converter accommodations existentes para room types
-  const roomTypes: RoomType[] = accommodations?.map(acc => ({
+  // Convert existing accommodations to room types
+  const roomTypes: RoomType[] = realAccommodations?.map((acc: any) => ({
     id: acc.id,
-    hotelId: hotel?.id || '1',
+    hotelId: acc.hostId || '1',
     name: acc.name,
     type: acc.type === 'hotel_room' ? 'standard' : acc.type === 'hotel_suite' ? 'suite' : 'standard',
     description: acc.description || '',
-    pricePerNight: typeof acc.pricePerNight === 'string' ? parseFloat(acc.pricePerNight.replace(/[^0-9.]/g, '')) : acc.pricePerNight,
-    maxOccupancy: 2,
+    pricePerNight: Number(acc.pricePerNight),
     totalRooms: 4,
     availableRooms: acc.isAvailable ? 3 : 0,
     images: acc.images || [],
     amenities: acc.amenities || [],
     size: 25,
     bedType: 'Cama de Casal',
-    hasBalcony: acc.amenities?.includes('Varanda') || false,
-    hasSeaView: acc.amenities?.includes('Vista Mar') || false,
+    hasBalcony: (acc.amenities || []).includes('Varanda'),
+    hasSeaView: (acc.amenities || []).includes('Vista Mar'),
     isActive: acc.isAvailable,
     createdAt: '2024-01-01',
-    updatedAt: '2024-09-07'
+    updatedAt: '2024-09-07',
+    address: acc.address,
+    rating: acc.rating || 0,
+    reviewCount: acc.reviewCount || 0
   })) || [];
 
-  // Funções para manipular hotel e room types
-  const handleCreateHotel = () => {
-    const hotelData = {
-      ...hotelForm,
-      managerId: user?.uid,
-      amenities: hotelForm.amenities.split(',').map(a => a.trim()).filter(a => a)
-    };
-    console.log('Creating hotel:', hotelData);
-    toast({ title: "Hotel criado com sucesso!", description: "Agora pode adicionar tipos de quartos." });
-    setShowHotelSetup(false);
-  };
-
-  const handleCreateRoomType = () => {
-    const roomData = {
-      ...roomTypeForm,
-      pricePerNight: parseFloat(roomTypeForm.pricePerNight),
-      size: roomTypeForm.size ? parseFloat(roomTypeForm.size) : undefined,
-      amenities: roomTypeForm.amenities.split(',').map(a => a.trim()).filter(a => a),
-      hotelId: hotel?.id
-    };
-    console.log('Creating room type:', roomData);
-    toast({ title: "Tipo de quarto adicionado!", description: `${roomData.name} foi criado com sucesso.` });
-    setShowCreateRoomType(false);
-    // Reset form
-    setRoomTypeForm({
-      name: '',
-      type: 'standard',
-      description: '',
-      pricePerNight: '',
-      maxOccupancy: 2,
-      totalRooms: 1,
-      size: '',
-      bedType: '',
-      amenities: '',
-      hasBalcony: false,
-      hasSeaView: false
-    });
-  };
-
-  const createEventMutation = useMutation({
-    mutationFn: (data: any) => apiService.createEvent?.(data) || Promise.resolve({ success: true }),
-    onSuccess: () => {
-      toast({ title: 'Sucesso', description: 'Evento criado com sucesso!' });
-      setShowCreateEvent(false);
-      setEventForm({ title: '', description: '', eventType: 'festival', venue: '', startDate: '', endDate: '', ticketPrice: 0, maxTickets: 100 });
-      queryClient.invalidateQueries({ queryKey: ['hotel-events'] });
-    },
-    onError: () => {
-      toast({ title: 'Erro', description: 'Erro ao criar evento', variant: 'destructive' });
+  const handleCreateAccommodation = async () => {
+    // Validações básicas
+    if (!accommodationForm.name?.trim()) {
+      toast({ title: "Erro", description: "Nome da propriedade é obrigatório", variant: "destructive" });
+      return;
     }
-  });
 
-  // Estatísticas completas baseadas nos room types
-  const stats = {
-    totalRoomTypes: roomTypes?.length || 0,
-    totalRooms: roomTypes?.reduce((sum, rt) => sum + rt.totalRooms, 0) || 0,
-    availableRooms: roomTypes?.reduce((sum, rt) => sum + rt.availableRooms, 0) || 0,
-    monthlyRevenue: 224500, // Mock data - seria calculado baseado nas reservas
-    averageRating: hotel?.rating || 0,
-    averageOccupancy: 82, // Mock data - seria calculado baseado na ocupação
-    totalEvents: (hotelEvents as HotelEvent[])?.length || 0,
-    upcomingEvents: (hotelEvents as HotelEvent[])?.filter((e: HotelEvent) => e.status === 'upcoming').length || 0,
-    activePartnerships: driverPartnerships.filter(p => p.status === 'active').length || 0,
-    partnershipEarnings: driverPartnerships.reduce((sum, p) => sum + p.lastMonth, 0) || 0
-  };
+    if (!accommodationForm.pricePerNight || accommodationForm.pricePerNight <= 0) {
+      toast({ title: "Erro", description: "Preço por noite deve ser maior que zero", variant: "destructive" });
+      return;
+    }
 
-  // Handlers
-  const handleCreateAccommodation = () => {
-    const accommodationData = {
-      ...accommodationForm,
-      pricePerNight: parseFloat(accommodationForm.pricePerNight),
-      amenities: accommodationForm.amenities.split(',').map(a => a.trim()).filter(a => a),
-      hostId: user?.uid
-    };
-    createAccommodationMutation.mutate(accommodationData);
+    if (!accommodationForm.address?.trim()) {
+      toast({ title: "Erro", description: "Endereço é obrigatório", variant: "destructive" });
+      return;
+    }
+
+    if (!accommodationForm.description?.trim()) {
+      toast({ title: "Erro", description: "Descrição é obrigatória", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const result = await createAccommodation({
+        name: accommodationForm.name,
+        type: accommodationForm.type || 'hotel_room',          // garante string
+        address: accommodationForm.address || '',               // garante string
+        description: accommodationForm.description || '',       // garante string
+        maxGuests: accommodationForm.maxGuests || 2,
+        amenities: accommodationForm.amenities || [],
+        images: accommodationForm.images || [],
+        isAvailable: accommodationForm.isAvailable ?? true,    // garante boolean
+        bedrooms: accommodationForm.bedrooms ?? 1,             // valor padrão
+        bathrooms: accommodationForm.bathrooms ?? 1,           // valor padrão
+      });
+
+      if (result.success) {
+        toast({ title: "Sucesso", description: "Acomodação criada com sucesso!" });
+        setShowHotelSetup(false);
+        setAccommodationForm({
+          name: '',
+          address: '',
+          type: 'hotel_room',
+          pricePerNight: 0,
+          amenities: [],
+          description: '',
+          images: [],
+          isAvailable: true,
+          maxGuests: 2,
+          bedrooms: 1,
+          bathrooms: 1,
+          unavailableDates: []
+        });
+      } else {
+        toast({ title: "Erro", description: result.error || "Falha ao criar acomodação", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Erro", description: error.message || "Erro ao criar acomodação", variant: "destructive" });
+    }
   };
 
   const handleCreateEvent = () => {
     const eventData = {
       ...eventForm,
-      organizerId: user?.uid,
+      organizerId: user?.id,
       ticketPrice: parseFloat(eventForm.ticketPrice.toString()),
       maxTickets: parseInt(eventForm.maxTickets.toString())
     };
     createEventMutation.mutate(eventData);
   };
 
+  const handleCreateNewRoomType = () => {
+    console.log("Criando novo tipo de quarto...");
+    setShowHotelSetup(true);
+    toast({ 
+      title: "Novo Tipo de Quarto", 
+      description: "Adicione as informações do novo tipo de quarto." 
+    });
+  };
+
+  // Funções para manipular o Hotel Wizard
+  const handleWizardClose = () => {
+    setIsWizardOpen(false);
+    setEditingRoom(null);
+    setWizardMode('create');
+  };
+
+  const handleWizardSubmit = (formData: any) => {
+    console.log('Dados do wizard submetidos:', formData);
+    
+    // Aqui você pode adicionar a lógica para atualizar o quarto no backend
+    toast({
+      title: "Quarto Atualizado",
+      description: `${formData.rooms?.[0]?.name || 'Quarto'} foi atualizado com sucesso`
+    });
+    
+    handleWizardClose();
+    
+    // Recarregar os dados se necessário
+    // queryClient.invalidateQueries({ queryKey: ['accommodations'] });
+  };
+
+  const handleEditRoom = (roomType: RoomType) => {
+    console.log("Editando quarto:", roomType.id);
+    setEditingRoom(roomType);
+    setWizardMode('edit');
+    setIsWizardOpen(true);
+    
+    toast({
+      title: "Editando Quarto",
+      description: `Abrindo editor para ${roomType.name}`
+    });
+  };
+
+  const handleViewDetails = (roomType: RoomType) => {
+    console.log("Visualizando detalhes do quarto:", roomType.id);
+    toast({ 
+      title: "Detalhes do Quarto", 
+      description: `Visualizando ${roomType.name}` 
+    });
+  };
+
+  const handleConfigureRoom = (roomType: RoomType) => {
+    console.log("Configurando quarto:", roomType.id);
+    // Você pode usar o mesmo wizard ou criar um modal específico
+    setEditingRoom(roomType);
+    setWizardMode('edit');
+    setIsWizardOpen(true);
+    
+    toast({ 
+      title: "Configurar Quarto", 
+      description: `Configurando ${roomType.name}` 
+    });
+  };
+
   const handleSendMessage = () => {
     if (!newMessage.trim() || !selectedChat) return;
-    
-    console.log('Enviar mensagem:', newMessage, 'para motorista:', selectedChat);
+    console.log('Sending message:', newMessage, 'to driver:', selectedChat);
     setNewMessage('');
-    // TODO: Implementar envio de mensagem
+    // TODO: Implement message sending logic
+  };
+
+  // Complete stats based on room types and hotelStats
+  const stats = hotelStats || {
+    totalRoomTypes: roomTypes?.length || 0,
+    totalRooms: roomTypes?.reduce((sum, rt) => sum + rt.totalRooms, 0) || 0,
+    availableRooms: roomTypes?.reduce((sum, rt) => sum + rt.availableRooms, 0) || 0,
+    monthlyRevenue: 224500,
+    averageRating: roomTypes?.reduce((sum, rt) => sum + (rt.rating || 0), 0) / (roomTypes?.length || 1) || 0,
+    averageOccupancy: 82,
+    totalEvents: hotelEvents?.length || 0,
+    upcomingEvents: hotelEvents?.filter(e => e.status === 'upcoming').length || 0,
+    activePartnerships: driverPartnerships.filter(p => p.status === 'active').length || 0,
+    partnershipEarnings: driverPartnerships.reduce((sum, p) => sum + p.lastMonth, 0) || 0,
+    totalBookings: 73
   };
 
   if (!user) {
@@ -493,21 +556,80 @@ export default function HotelsHome() {
           </div>
           
           <div className="flex items-center space-x-4">
-            <Link href="/" data-testid="link-main-app">
-              <Button variant="outline">
-                🏠 App Principal
+            {/* Botão para criar novo hotel usando o wizard */}
+            <Link href="/hotels/create">
+              <Button className="bg-green-600 hover:bg-green-700">
+                <Plus className="w-4 h-4 mr-2" />
+                Criar Novo Hotel
               </Button>
             </Link>
-            <Button variant="ghost" data-testid="button-user-menu">
+
+            <Link href="/" data-testid="link-main-app">
+              <Button variant="outline">
+                <Home className="w-4 h-4 mr-2" />
+                App Principal
+              </Button>
+            </Link>
+            <Badge data-testid="user-badge" variant="secondary">
               <UserCheck className="w-4 h-4 mr-2" />
               {user.email?.split('@')[0]}
-            </Button>
+            </Badge>
           </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Estatísticas principais */}
+        {/* Cards de Ação Rápida */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Card de Criar Hotel */}
+          <Link href="/hotels/create">
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow border-2 border-dashed border-green-200 hover:border-green-400 bg-gradient-to-br from-green-50 to-green-100">
+              <CardContent className="pt-6 text-center">
+                <div className="text-green-600 mb-4">
+                  <Hotel className="w-12 h-12 mx-auto" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Criar Novo Hotel
+                </h3>
+                <p className="text-gray-600 text-sm">
+                  Use nosso wizard completo para cadastrar um novo estabelecimento
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          {/* Card de Gerenciar Hotéis */}
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100">
+            <CardContent className="pt-6 text-center">
+              <div className="text-blue-600 mb-4">
+                <Building2 className="w-12 h-12 mx-auto" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Meus Hotéis
+              </h3>
+              <p className="text-gray-600 text-sm">
+                Visualize e gerencie seus estabelecimentos existentes
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Card de Relatórios */}
+          <Card className="bg-gradient-to-br from-purple-50 to-purple-100">
+            <CardContent className="pt-6 text-center">
+              <div className="text-purple-600 mb-4">
+                <BarChart3 className="w-12 h-12 mx-auto" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Relatórios
+              </h3>
+              <p className="text-gray-600 text-sm">
+                Acesse relatórios e estatísticas detalhadas
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main statistics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card className="bg-gradient-to-br from-green-50 to-green-100">
             <CardContent className="pt-6">
@@ -566,8 +688,7 @@ export default function HotelsHome() {
           </Card>
         </div>
 
-
-        {/* Gestão por abas */}
+        {/* Tab management */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
@@ -585,7 +706,7 @@ export default function HotelsHome() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Perfil do hotel */}
+                {/* Hotel profile */}
                 <div className="bg-gradient-to-r from-green-50 to-teal-50 p-6 rounded-lg">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold">Perfil do Estabelecimento</h3>
@@ -641,7 +762,7 @@ export default function HotelsHome() {
                   )}
                 </div>
 
-                {/* Estatísticas do dashboard */}
+                {/* Dashboard statistics */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center p-4 bg-green-50 rounded-lg">
                     <p className="text-2xl font-bold text-green-600">{stats.availableRooms}</p>
@@ -661,7 +782,7 @@ export default function HotelsHome() {
                   </div>
                 </div>
                 
-                {/* Estatísticas adicionais */}
+                {/* Additional statistics */}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <div className="text-center p-4 bg-orange-50 rounded-lg">
                     <p className="text-2xl font-bold text-orange-600">{stats.averageRating.toFixed(1)}</p>
@@ -686,19 +807,23 @@ export default function HotelsHome() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
                     <Building2 className="w-5 h-5" />
-                    {hotel ? 'Gestão de Quartos' : 'Configurar Hotel'}
+                    Gestão de Quartos
                   </CardTitle>
-                  {hotel ? (
-                    <Button onClick={() => setShowCreateRoomType(true)} className="bg-green-600 hover:bg-green-700">
+                  <div className="flex gap-2">
+                    <Link href="/hotels/create">
+                      <Button className="bg-green-600 hover:bg-green-700">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Novo Hotel (Wizard)
+                      </Button>
+                    </Link>
+                    <Button 
+                      onClick={handleCreateNewRoomType}
+                      variant="outline"
+                    >
                       <Plus className="w-4 h-4 mr-2" />
-                      Novo Tipo de Quarto
+                      Tipo de Quarto Rápido
                     </Button>
-                  ) : (
-                    <Button onClick={() => setShowHotelSetup(true)} className="bg-blue-600 hover:bg-blue-700">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Configurar Hotel
-                    </Button>
-                  )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -710,31 +835,21 @@ export default function HotelsHome() {
                   </TabsList>
 
                   <TabsContent value="published" className="space-y-4">
-                    {!hotel ? (
+                    {accommodationsLoading ? (
+                      <div>Carregando acomodações...</div>
+                    ) : accommodationsError ? (
+                      <div>Erro ao carregar acomodações</div>
+                    ) : realAccommodations.length === 0 ? (
                       <div className="text-center py-12 text-gray-500">
                         <Building2 className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                        <h3 className="text-lg font-medium mb-2">Configure seu hotel primeiro</h3>
-                        <p className="text-sm mb-4">Crie o perfil do seu hotel para depois adicionar tipos de quartos.</p>
-                        <Button 
-                          onClick={() => setShowHotelSetup(true)}
-                          className="bg-blue-600 hover:bg-blue-700"
-                        >
-                          <Plus className="w-4 h-4 mr-2" />
-                          Configurar Hotel
-                        </Button>
-                      </div>
-                    ) : roomTypes?.length === 0 ? (
-                      <div className="text-center py-12 text-gray-500">
-                        <Building2 className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                        <h3 className="text-lg font-medium mb-2">Nenhum tipo de quarto criado</h3>
-                        <p className="text-sm mb-4">Adicione tipos de quartos para começar a receber reservas.</p>
-                        <Button 
-                          onClick={() => setShowCreateRoomType(true)}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          <Plus className="w-4 h-4 mr-2" />
-                          Criar Primeiro Tipo de Quarto
-                        </Button>
+                        <h3 className="text-lg font-medium mb-2">Nenhuma acomodação criada</h3>
+                        <p className="text-sm mb-4">Use nosso wizard completo para criar seu primeiro hotel com todos os detalhes.</p>
+                        <Link href="/hotels/create">
+                          <Button className="bg-green-600 hover:bg-green-700">
+                            <Hotel className="w-4 h-4 mr-2" />
+                            Criar Primeiro Hotel
+                          </Button>
+                        </Link>
                       </div>
                     ) : (
                       <div className="grid gap-4">
@@ -762,22 +877,21 @@ export default function HotelsHome() {
                                   <div className="space-y-2 mb-4">
                                     <div className="flex items-center gap-2 text-gray-600">
                                       <MapPin className="h-4 w-4" />
-                                      <span className="text-sm">{hotel?.address}</span>
+                                      <span className="text-sm">{roomType.address}</span>
                                     </div>
                                     
                                     {roomType.amenities && roomType.amenities.length > 0 && (
                                       <div className="flex flex-wrap gap-1">
-                                        {roomType.amenities.map((amenity, index) => (
+                                        {roomType.amenities.map((amenity: string, index: number) => (
                                           <Badge key={index} variant="outline" className="text-xs">{amenity}</Badge>
                                         ))}
                                       </div>
                                     )}
                                   </div>
-                                  
                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                     <div className="flex items-center gap-1 text-gray-600">
                                       <Star className="h-4 w-4 text-yellow-500" />
-                                      <span>{hotel?.rating} ({hotel?.reviewCount})</span>
+                                      <span>{roomType.rating} ({roomType.reviewCount})</span>
                                     </div>
                                     <div className="flex items-center gap-1 text-gray-600">
                                       <DollarSign className="h-4 w-4" />
@@ -795,15 +909,27 @@ export default function HotelsHome() {
                                 </div>
                                 
                                 <div className="flex flex-col gap-2 ml-4">
-                                  <Button size="sm" variant="outline">
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    onClick={() => handleEditRoom(roomType)}
+                                  >
                                     <Edit className="w-4 h-4 mr-1" />
                                     Editar
                                   </Button>
-                                  <Button size="sm" variant="outline">
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    onClick={() => handleViewDetails(roomType)}
+                                  >
                                     <Eye className="w-4 h-4 mr-1" />
                                     Ver Detalhes
                                   </Button>
-                                  <Button size="sm" variant="outline">
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    onClick={() => handleConfigureRoom(roomType)}
+                                  >
                                     <Settings className="w-4 h-4 mr-1" />
                                     Configurar
                                   </Button>
@@ -888,7 +1014,7 @@ export default function HotelsHome() {
 
           <TabsContent value="partnerships">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Lista de parcerias */}
+              {/* Partnership list */}
               <div className="lg:col-span-2">
                 <Card>
                   <CardHeader>
@@ -968,7 +1094,7 @@ export default function HotelsHome() {
                 </Card>
               </div>
               
-              {/* Chat integrado */}
+              {/* Integrated chat */}
               <div>
                 <Card className="h-fit">
                   <CardHeader>
@@ -985,7 +1111,7 @@ export default function HotelsHome() {
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        {/* Header do chat */}
+                        {/* Chat header */}
                         <div className="flex items-center gap-3 pb-3 border-b">
                           <div className="p-2 bg-blue-100 rounded-lg">
                             <Users className="h-4 w-4 text-blue-600" />
@@ -996,7 +1122,7 @@ export default function HotelsHome() {
                           </div>
                         </div>
                         
-                        {/* Mensagens */}
+                        {/* Messages */}
                         <div className="space-y-3 max-h-64 overflow-y-auto">
                           {chatMessages[selectedChat]?.map((msg) => (
                             <div key={msg.id} className={`flex ${msg.isHotel ? 'justify-end' : 'justify-start'}`}>
@@ -1015,8 +1141,8 @@ export default function HotelsHome() {
                             </div>
                           ))}
                         </div>
-                        
-                        {/* Input de mensagem */}
+                                               
+                        {/* Message input */}
                         <div className="flex gap-2 pt-3 border-t">
                           <Input 
                             placeholder="Escreva sua mensagem..."
@@ -1063,7 +1189,7 @@ export default function HotelsHome() {
                   </TabsList>
                   
                   <TabsContent value="active" className="space-y-4">
-                    {(hotelEvents as HotelEvent[])?.filter((e: HotelEvent) => e.status === 'upcoming').length === 0 ? (
+                    {hotelEvents?.filter((e: HotelEvent) => e.status === 'upcoming').length === 0 ? (
                       <div className="text-center py-12 text-gray-500">
                         <PartyPopper className="h-16 w-16 mx-auto mb-4 opacity-50" />
                         <h3 className="text-lg font-medium mb-2">Nenhum evento ativo</h3>
@@ -1078,7 +1204,7 @@ export default function HotelsHome() {
                       </div>
                     ) : (
                       <div className="grid gap-4">
-                        {(hotelEvents as HotelEvent[])?.filter((e: HotelEvent) => e.status === 'upcoming').map((event: HotelEvent) => (
+                        {hotelEvents?.filter((e: HotelEvent) => e.status === 'upcoming').map((event: HotelEvent) => (
                           <Card key={event.id} className="border-l-4 border-l-purple-500">
                             <CardContent className="pt-6">
                               <div className="flex justify-between items-start">
@@ -1160,14 +1286,38 @@ export default function HotelsHome() {
           </TabsContent>
         </Tabs>
 
-        {/* Modais */}
+        {/* Hotel Creation Wizard */}
+        <HotelCreationWizard
+          open={isWizardOpen}
+          onClose={handleWizardClose}
+          onSubmit={handleWizardSubmit}
+          mode={wizardMode}
+          initialData={editingRoom ? {
+            rooms: [{
+              id: editingRoom.id,
+              name: editingRoom.name,
+              type: editingRoom.type,
+              capacity: 2, // valor padrão
+              quantity: editingRoom.totalRooms,
+              price: editingRoom.pricePerNight,
+              description: editingRoom.description,
+              amenities: editingRoom.amenities || [],
+              images: editingRoom.images || []
+            }]
+          } : undefined}
+        />
+
+        {/* Modals */}
         
-        {/* Modal para configurar hotel */}
+        {/* Modal for hotel setup */}
         <Dialog open={showHotelSetup} onOpenChange={setShowHotelSetup}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-[600px]" aria-describedby="hotel-setup-description">
             <DialogHeader>
               <DialogTitle>Configurar Perfil do Hotel</DialogTitle>
             </DialogHeader>
+            <DialogDescription id="hotel-setup-description">
+              Formulário para configurar o perfil do hotel incluindo nome, localização, tipo de quarto, preço, comodidades e descrição.
+            </DialogDescription>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1175,13 +1325,16 @@ export default function HotelsHome() {
                   <Input 
                     id="hotel-name" 
                     placeholder="ex: Hotel Vista Mar Maputo"
-                    value={hotelForm.name}
-                    onChange={(e) => setHotelForm(prev => ({ ...prev, name: e.target.value }))}
+                    value={accommodationForm.name}
+                    onChange={(e) => setAccommodationForm(prev => ({ ...prev, name: e.target.value }))}
                   />
                 </div>
                 <div>
                   <Label htmlFor="type">Tipo de Quarto</Label>
-                  <Select value={accommodationForm.type} onValueChange={(value) => setAccommodationForm(prev => ({ ...prev, type: value }))}>
+                  <Select 
+                    value={accommodationForm.type || 'hotel_room'} 
+                    onValueChange={(value) => setAccommodationForm(prev => ({ ...prev, type: value }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar tipo" />
                     </SelectTrigger>
@@ -1199,7 +1352,7 @@ export default function HotelsHome() {
                 <Label htmlFor="address">Localização</Label>
                 <LocationAutocomplete 
                   id="accommodation-address"
-                  value={accommodationForm.address}
+                  value={accommodationForm.address || ''}
                   onChange={(value) => setAccommodationForm(prev => ({ ...prev, address: value }))}
                   placeholder="Endereço do alojamento..."
                 />
@@ -1213,7 +1366,10 @@ export default function HotelsHome() {
                     type="number"
                     placeholder="2500"
                     value={accommodationForm.pricePerNight}
-                    onChange={(e) => setAccommodationForm(prev => ({ ...prev, pricePerNight: e.target.value }))}
+                    onChange={(e) => setAccommodationForm(prev => ({ 
+                      ...prev, 
+                      pricePerNight: Number(e.target.value) 
+                    }))}
                   />
                 </div>
                 <div>
@@ -1221,8 +1377,12 @@ export default function HotelsHome() {
                   <Input 
                     id="occupancy" 
                     type="number"
-                    value={accommodationForm.maxOccupancy}
-                    onChange={(e) => setAccommodationForm(prev => ({ ...prev, maxOccupancy: parseInt(e.target.value) }))}
+                    placeholder="2"
+                    value={accommodationForm.maxGuests}
+                    onChange={(e) => setAccommodationForm(prev => ({ 
+                      ...prev, 
+                      maxGuests: Number(e.target.value) 
+                    }))}
                   />
                 </div>
               </div>
@@ -1232,28 +1392,41 @@ export default function HotelsHome() {
                 <Input 
                   id="amenities" 
                   placeholder="Wi-Fi, Ar Condicionado, Vista Mar"
-                  value={accommodationForm.amenities}
-                  onChange={(e) => setAccommodationForm(prev => ({ ...prev, amenities: e.target.value }))}
+                  value={accommodationForm.amenities?.join(', ') || ''}
+                  onChange={(e) => setAccommodationForm(prev => ({ 
+                    ...prev, 
+                    amenities: e.target.value.split(',').map(a => a.trim()).filter(a => a) 
+                  }))}
                 />
               </div>
               
               <div>
-                <Label htmlFor="description">Descrição</Label>
+                <Label htmlFor="description">Descrição do Quarto</Label>
                 <Textarea 
                   id="description" 
                   placeholder="Descreva o quarto e suas características..."
-                  value={accommodationForm.description}
+                  value={accommodationForm.description || ''}
                   onChange={(e) => setAccommodationForm(prev => ({ ...prev, description: e.target.value }))}
                   rows={3}
                 />
               </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch 
+                  id="is-available"
+                  checked={accommodationForm.isAvailable}
+                  onCheckedChange={(checked) => setAccommodationForm(prev => ({ ...prev, isAvailable: checked }))}
+                />
+                <Label htmlFor="is-available">Disponível para reservas</Label>
+              </div>
               
               <div className="flex gap-3 pt-4">
                 <Button 
-                  onClick={handleCreateHotel}
+                  onClick={handleCreateAccommodation}
                   className="bg-blue-600 hover:bg-blue-700"
+                  disabled={accommodationsLoading}
                 >
-                  Criar Hotel
+                  {accommodationsLoading ? 'Criando...' : 'Criar Acomodação'}
                 </Button>
                 <Button variant="outline" onClick={() => setShowHotelSetup(false)}>
                   Cancelar
@@ -1263,12 +1436,15 @@ export default function HotelsHome() {
           </DialogContent>
         </Dialog>
         
-        {/* Modal para criar evento */}
+        {/* Modal for creating event */}
         <Dialog open={showCreateEvent} onOpenChange={setShowCreateEvent}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-[600px]" aria-describedby="event-creation-description">
             <DialogHeader>
               <DialogTitle>Criar Novo Evento</DialogTitle>
             </DialogHeader>
+            <DialogDescription id="event-creation-description">
+              Crie um novo evento para o seu hotel, especificando título, tipo, descrição, local, datas e preço dos bilhetes.
+            </DialogDescription>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1378,12 +1554,15 @@ export default function HotelsHome() {
           </DialogContent>
         </Dialog>
         
-        {/* Modal para criar parceria */}
+        {/* Modal for creating partnership */}
         <Dialog open={showCreatePartnership} onOpenChange={setShowCreatePartnership}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-[600px]" aria-describedby="partnership-creation-description">
             <DialogHeader>
               <DialogTitle>Criar Post de Parceria</DialogTitle>
             </DialogHeader>
+            <DialogDescription id="partnership-creation-description">
+              Crie um post de parceria para motoristas, especificando título, descrição, comissão, benefícios e requisitos.
+            </DialogDescription>
             <div className="space-y-4">
               <div>
                 <Label htmlFor="partnership-title">Título da Parceria</Label>
@@ -1442,7 +1621,7 @@ export default function HotelsHome() {
                 <Button 
                   className="bg-green-600 hover:bg-green-700"
                   onClick={() => {
-                    console.log('Criar post de parceria:', partnershipForm);
+                    console.log('Creating partnership post:', partnershipForm);
                     toast({ title: 'Sucesso', description: 'Post de parceria criado!' });
                     setShowCreatePartnership(false);
                     setPartnershipForm({ title: '', description: '', commission: 10, benefits: '', requirements: '', targetRoutes: [] });

@@ -1,6 +1,31 @@
 // API Client que usa Mock Service quando backend não está disponível
 import { MockApiService } from "../services/mockApi";
 
+// Interface para CreateAccommodationRequest
+export interface CreateAccommodationRequest {
+  name: string;
+  type: string;
+  address: string;
+  lat?: number;
+  lng?: number;
+  rating?: number;
+  images?: string[];
+  amenities?: string[];
+  description?: string;
+  hostId?: string;
+  pricePerNight?: number;
+  reviewCount?: number;
+  distanceFromCenter?: number;
+  isAvailable?: boolean;
+  offerDriverDiscounts?: boolean;
+  driverDiscountRate?: number;
+  minimumDriverLevel?: string;
+  partnershipBadgeVisible?: boolean;
+  enablePartnerships?: boolean;
+  accommodationDiscount?: number;
+  transportDiscount?: number;
+}
+
 // Função para detectar se o backend está disponível
 async function isBackendAvailable(): Promise<boolean> {
   try {
@@ -113,6 +138,32 @@ export class ApiClient {
     }
 
     return await MockApiService.searchAccommodations(params);
+  }
+
+  // Criar nova acomodação
+  static async createAccommodation(data: CreateAccommodationRequest) {
+    console.log("🏨 API: Criando acomodação", data);
+
+    try {
+      if (this.useBackend) {
+        const response = await fetch('/api/accommodations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+          throw new Error('Erro ao criar acomodação');
+        }
+
+        return await response.json();
+      }
+    } catch (error) {
+      console.log("🔄 Fallback to mock service for create accommodation");
+      this.useBackend = false;
+    }
+
+    return await MockApiService.createAccommodation(data);
   }
 
   // ===== BOOKINGS API =====

@@ -8,8 +8,14 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Hotel, Calendar, DollarSign, Users, Percent, Plus, Info } from "lucide-react";
+import { Offer } from '@/shared/types/dashboard';
 
-export default function CreateOffer() {
+interface CreateOfferProps {
+  onCreate: (data: Offer) => void;
+  onCancel: () => void;
+}
+
+export default function CreateOffer({ onCreate, onCancel }: CreateOfferProps) {
   const { user } = useAuth();
   const [formData, setFormData] = useState({
     date: "",
@@ -51,8 +57,7 @@ export default function CreateOffer() {
   };
 
   const handleCreateOffer = () => {
-    console.log("Criar oferta diária:", formData);
-    // TODO: Implementar criação da oferta
+    onCreate(formData as unknown as Offer);
     alert("Oferta criada com sucesso!");
   };
 
@@ -311,7 +316,7 @@ export default function CreateOffer() {
               <Button 
                 variant="outline" 
                 size="lg"
-                onClick={() => window.history.back()}
+                onClick={onCancel}
                 data-testid="button-cancel"
               >
                 Cancelar

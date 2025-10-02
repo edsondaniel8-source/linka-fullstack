@@ -72,21 +72,53 @@ export const useAuth = (): UseAuthReturn => {
 
     handleInitialRedirect();
 
-    // Listen to auth state changes
-    const unsubscribe = onAuthStateChange((firebaseUser) => {
+    // ✅ CORREÇÃO: Listen to auth state changes com persistência do token
+    const unsubscribe = onAuthStateChange(async (firebaseUser) => {
       if (mounted) {
-        setAuthState({
-          firebaseUser,
-          appUser: firebaseUser
-            ? {
-                id: firebaseUser.uid,
-                name: firebaseUser.displayName || undefined,
-                email: firebaseUser.email,
-              }
-            : null,
-          loading: false,
-          error: null,
-        });
+        try {
+          if (firebaseUser) {
+            // 🔥 OBTER E SALVAR TOKEN NO LOCALSTORAGE
+            const token = await firebaseUser.getIdToken();
+            localStorage.setItem('token', token);
+            
+            // 🔥 SALVAR INFORMAÇÕES DO USUÁRIO
+            localStorage.setItem('user', JSON.stringify({
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: firebaseUser.displayName
+            }));
+            
+            console.log('✅ Token salvo no localStorage:', token.substring(0, 20) + '...');
+          } else {
+            // 🔥 LIMPAR DADOS AO FAZER LOGOUT
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            console.log('✅ Dados de autenticação removidos do localStorage');
+          }
+          
+          setAuthState({
+            firebaseUser,
+            appUser: firebaseUser
+              ? {
+                  id: firebaseUser.uid,
+                  name: firebaseUser.displayName || undefined,
+                  email: firebaseUser.email,
+                }
+              : null,
+            loading: false,
+            error: null,
+          });
+        } catch (error) {
+          console.error('Erro ao processar mudança de autenticação:', error);
+          if (mounted) {
+            setAuthState({
+              firebaseUser: null,
+              appUser: null,
+              loading: false,
+              error: 'Erro ao processar autenticação',
+            });
+          }
+        }
       }
     });
 
@@ -177,6 +209,7 @@ export const useAuth = (): UseAuthReturn => {
     }
   };
 
+  // ✅ CORREÇÃO: Atualizar signOut para limpar localStorage
   const signOut = async (): Promise<void> => {
     if (!isFirebaseConfigured) {
       throw new Error('Firebase not configured');
@@ -186,6 +219,10 @@ export const useAuth = (): UseAuthReturn => {
     
     try {
       await signOutUser();
+      // 🔥 GARANTIR QUE LOCALSTORAGE SEJA LIMPO
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      
       // Force clear the auth state immediately
       setAuthState({
         firebaseUser: null,
@@ -193,6 +230,8 @@ export const useAuth = (): UseAuthReturn => {
         loading: false,
         error: null,
       });
+      
+      console.log('✅ Logout realizado e localStorage limpo');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sign out failed';
       setAuthState({

@@ -41,6 +41,30 @@ interface Booking {
   details: any;
 }
 
+interface CreateAccommodationRequest {
+  name: string;
+  type: string;
+  address: string;
+  lat?: number;
+  lng?: number;
+  rating?: number;
+  images?: string[];
+  amenities?: string[];
+  description?: string;
+  hostId?: string;
+  pricePerNight?: number;
+  reviewCount?: number;
+  distanceFromCenter?: number;
+  isAvailable?: boolean;
+  offerDriverDiscounts?: boolean;
+  driverDiscountRate?: number;
+  minimumDriverLevel?: string;
+  partnershipBadgeVisible?: boolean;
+  enablePartnerships?: boolean;
+  accommodationDiscount?: number;
+  transportDiscount?: number;
+}
+
 // Armazenamento em memória com dados mais realistas de Moçambique
 let rides: Ride[] = [
   {
@@ -357,6 +381,32 @@ export class MockApiService {
       accommodations: accommodations,
       total: accommodations.length
     };
+  }
+
+  // Criar nova acomodação
+  static async createAccommodation(data: CreateAccommodationRequest): Promise<Accommodation> {
+    console.log("🟢 MockApiService: Criando acomodação", data);
+
+    const newAccommodation: Accommodation = {
+      id: "mock-id-" + Math.floor(Math.random() * 1000),
+      name: data.name,
+      type: data.type,
+      location: data.address,      // 🔹 mapear address -> location
+      price: (data.pricePerNight || 0).toString(), // 🔹 mapear pricePerNight -> price (convertendo para string)
+      description: data.description || '',
+      amenities: data.amenities || [],
+      images: data.images || [],
+      availableRooms: 1,
+      rating: data.rating || 4.0,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Adicionar à lista de acomodações
+    accommodations.push(newAccommodation);
+    
+    console.log('✅ Nova acomodação criada:', newAccommodation);
+    
+    return newAccommodation;
   }
   
   // ===== BOOKINGS API =====

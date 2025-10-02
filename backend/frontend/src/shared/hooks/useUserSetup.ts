@@ -8,7 +8,7 @@ interface UserSetupState {
 }
 
 export const useUserSetup = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, firebaseUser, isAuthenticated } = useAuth();
   const [setupState, setSetupState] = useState<UserSetupState>({
     needsRoleSetup: false,
     loading: true,
@@ -16,7 +16,7 @@ export const useUserSetup = () => {
   });
 
   useEffect(() => {
-    if (!isAuthenticated || !user) {
+    if (!isAuthenticated || !firebaseUser) {
       setSetupState({
         needsRoleSetup: false,
         loading: false,
@@ -27,7 +27,12 @@ export const useUserSetup = () => {
 
     const checkUserSetup = async () => {
       try {
-        const token = await user.getIdToken();
+        // ✅ CORREÇÃO: Usar firebaseUser para getIdToken() em vez de user (AppUser)
+        const token = firebaseUser ? await firebaseUser.getIdToken() : localStorage.getItem('token');
+        const uid = firebaseUser?.uid;
+        const displayName = firebaseUser?.displayName;
+        const photoURL = firebaseUser?.photoURL;
+        
         console.log("🔍 Verificando perfil do usuário...");
         let response;
         
@@ -69,13 +74,19 @@ export const useUserSetup = () => {
     };
 
     checkUserSetup();
-  }, [user, isAuthenticated]);
+  }, [firebaseUser, isAuthenticated]); // ✅ Mudar dependência para firebaseUser
 
   const setupUserRoles = async (roles: string[]) => {
-    if (!user) throw new Error('User not authenticated');
+    if (!firebaseUser) throw new Error('User not authenticated');
     
     try {
-      const token = await user.getIdToken();
+      // ✅ CORREÇÃO: Usar firebaseUser para getIdToken() e propriedades Firebase
+      const token = firebaseUser ? await firebaseUser.getIdToken() : localStorage.getItem('token');
+      const uid = firebaseUser?.uid;
+      const email = firebaseUser?.email;
+      const displayName = firebaseUser?.displayName;
+      const photoURL = firebaseUser?.photoURL;
+      
       console.log("🚀 Configurando roles do usuário...", roles);
       let registerResponse, response;
       
@@ -90,10 +101,10 @@ export const useUserSetup = () => {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL
+          uid: uid, // ✅ Usar uid do firebaseUser
+          email: email, // ✅ Usar email do firebaseUser
+          displayName: displayName, // ✅ Usar displayName do firebaseUser
+          photoURL: photoURL // ✅ Usar photoURL do firebaseUser
         })
       });
 
@@ -130,6 +141,6 @@ export const useUserSetup = () => {
   return {
     ...setupState,
     setupUserRoles,
-    userEmail: user?.email || ''
+    userEmail: firebaseUser?.email || user?.email || '' // ✅ Fallback para user.email se necessário
   };
 };

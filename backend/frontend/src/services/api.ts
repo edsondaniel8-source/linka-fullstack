@@ -43,7 +43,7 @@ class ApiService {
     return response.json();
   }
 
- // ===== RIDES API =====
+  // ===== RIDES API =====
   async searchRides(params: { from?: string; to?: string; passengers?: number; date?: string }) {
     const searchParams = new URLSearchParams();
     if (params.from) searchParams.append('from', params.from);
@@ -140,6 +140,19 @@ class ApiService {
 
   async createAccommodation(accommodationData: any) {
     return this.request('POST', '/api/hotels', accommodationData);
+  }
+
+  // ===== HOTELS DETAIL/UPDATE/DELETE API =====
+  async getHotelById(hotelId: string) {
+    return this.request('GET', `/api/hotels/${hotelId}`);
+  }
+
+  async updateAccommodation(hotelId: string, accommodationData: any) {
+    return this.request('PUT', `/api/hotels/${hotelId}`, accommodationData);
+  }
+
+  async deleteAccommodation(hotelId: string) {
+    return this.request('DELETE', `/api/hotels/${hotelId}`);
   }
 
   // ===== ADMIN API =====

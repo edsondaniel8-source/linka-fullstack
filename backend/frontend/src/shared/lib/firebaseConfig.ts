@@ -284,8 +284,39 @@ export const setupAuthListener = (callback: (user: User | null) => void): (() =>
     return () => {};
   }
   
-  return onAuthStateChanged(auth, (user) => {
+  return onAuthStateChanged(auth, async (user) => {
     console.log('👤 Auth state changed:', user ? `Signed in as ${user.email}` : 'Signed out');
+    
+    // ✅✅✅ CÓDIGO CORRIGIDO - SALVAR TOKEN NO LOCALSTORAGE
+    if (user) {
+      try {
+        // Obter token fresco do Firebase
+        const token = await user.getIdToken(/* forceRefresh */ true);
+        
+        // Salvar para uso nas requisições API
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL
+        }));
+        
+        console.log('✅ Token salvo no localStorage');
+        console.log('📱 Token disponível para APIs');
+        console.log('🔐 Token length:', token.length);
+        
+      } catch (error) {
+        console.error('❌ Erro ao salvar token:', error);
+      }
+    } else {
+      // Limpar dados ao fazer logout
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      console.log('🧹 Dados de autenticação removidos do localStorage');
+    }
+    // ✅ FIM DO CÓDIGO CORRIGIDO
+    
     callback(user);
   });
 };

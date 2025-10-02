@@ -2,11 +2,11 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/shared/hooks/useAuth";
 import { Button } from "@/shared/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/shared/components/ui/dropdown-menu";
-import { UserCircle, LogOut, Settings, Hotel, TrendingUp, Home } from "lucide-react";
+import { UserCircle, LogOut, Settings, Hotel, TrendingUp, Home, Plus } from "lucide-react";
 
 export default function HotelsHeader() {
   const { user, signOut } = useAuth();
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
 
   const handleSignOut = async () => {
     try {
@@ -33,10 +33,10 @@ export default function HotelsHeader() {
         </div>
 
         {/* Navegação Desktop */}
-        <nav className="hidden md:flex items-center space-x-1">
+        <nav className="hidden md:flex items-center space-x-3">
           <Link href="/hotels">
             <Button 
-              variant={location.startsWith("/hotels") ? "default" : "ghost"} 
+              variant={location.startsWith("/hotels") && !location.includes("/create") ? "default" : "ghost"} 
               size="sm"
               className="h-9"
             >
@@ -44,6 +44,19 @@ export default function HotelsHeader() {
               Dashboard
             </Button>
           </Link>
+          
+          {/* Botão Criar Hotel - só aparece fora da página de criação */}
+          {location !== '/hotels/create' && (
+            <Button
+              onClick={() => setLocation('/hotels/create')}
+              size="sm"
+              className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Criar Hotel
+            </Button>
+          )}
+          
           <Link href="/">
             <Button 
               variant="outline" 
@@ -58,6 +71,19 @@ export default function HotelsHeader() {
 
         {/* Menu do Utilizador */}
         <div className="flex items-center space-x-3">
+          {/* Botão Criar Hotel Mobile - só aparece fora da página de criação */}
+          {location !== '/hotels/create' && (
+            <div className="md:hidden">
+              <Button
+                onClick={() => setLocation('/hotels/create')}
+                size="sm"
+                className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+          
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
