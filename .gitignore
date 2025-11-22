@@ -42,6 +42,5 @@ temp/
 .vercel
 
 # Large files and data
-*.pbf
 *.zip
 backend/backend/mozambique_shapefiles/

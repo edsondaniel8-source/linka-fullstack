@@ -40,3 +40,6 @@ temp/
 *.db
 *.sqlite
 .vercel
+*.pbf
+*.zip
+backend/backend/mozambique_shapefiles/
