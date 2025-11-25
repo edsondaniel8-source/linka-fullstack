@@ -12,190 +12,80 @@ const VEHICLE_TYPE_DISPLAY: Record<string, { label: string; icon: string }> = {
   motorcycle: { label: 'Moto', icon: '🏍️' }
 };
 
-// ✅ INTERFACE CORRIGIDA COM NOVOS CAMPOS
-interface RideWithCompatibility {
-  id: string;
-  driverId: string;
-  driverName?: string;
-  driverRating?: number;
-  vehicleInfo?: {
-    make: string;
-    model: string;
-    type: string;
-    typeDisplay: string;
-    typeIcon: string;
-    plate: string;
-    color: string;
-    maxPassengers: number;
+// ✅ FUNÇÃO DE NORMALIZAÇÃO PARA FRONTEND
+function normalizeDbRideToDto(raw: any) {
+  return {
+    // Identificação
+    id: raw.ride_id || raw.id,
+    driverId: raw.driver_id || raw.driverId,
+    
+    // Informações do motorista
+    driverName: raw.driver_name || raw.driverName || null,
+    driverRating: raw.driver_rating ? Number(raw.driver_rating) : 
+                 raw.driverRating ? Number(raw.driverRating) : null,
+    
+    // Informações do veículo
+    vehicle: `${raw.vehicle_make || ''} ${raw.vehicle_model || ''}`.trim() || 
+             raw.vehicle || null,
+    vehicleType: raw.vehicle_type || raw.vehicleType || null,
+    vehiclePlate: raw.vehicle_plate || raw.vehiclePlate || null,
+    vehicleColor: raw.vehicle_color || raw.vehicleColor || null,
+    maxPassengers: raw.max_passengers || raw.maxPassengers || null,
+    
+    // Localização - origem
+    fromAddress: raw.from_address || raw.fromAddress || null,
+    fromCity: raw.from_city || raw.fromCity || null,
+    fromDistrict: raw.from_district || raw.fromDistrict || null,
+    fromProvince: raw.from_province || raw.fromProvince || null,
+    fromLat: raw.from_lat ? Number(raw.from_lat) : 
+             raw.fromLat ? Number(raw.fromLat) : null,
+    fromLng: raw.from_lng ? Number(raw.from_lng) : 
+             raw.fromLng ? Number(raw.fromLng) : null,
+    
+    // Localização - destino
+    toAddress: raw.to_address || raw.toAddress || null,
+    toCity: raw.to_city || raw.toCity || null,
+    toDistrict: raw.to_district || raw.toDistrict || null,
+    toProvince: raw.to_province || raw.toProvince || null,
+    toLat: raw.to_lat ? Number(raw.to_lat) : 
+           raw.toLat ? Number(raw.toLat) : null,
+    toLng: raw.to_lng ? Number(raw.to_lng) : 
+           raw.toLng ? Number(raw.toLng) : null,
+    
+    // Data e hora
+    departureDate: raw.departuredate ? new Date(raw.departuredate).toISOString() :
+                   raw.departureDate ? new Date(raw.departureDate).toISOString() : null,
+    departureDateFormatted: raw.departuredate ? 
+                           new Date(raw.departuredate).toLocaleDateString('pt-PT') :
+                           raw.departureDate ? 
+                           new Date(raw.departureDate).toLocaleDateString('pt-PT') : null,
+    departureTime: raw.departuredate ? 
+                  new Date(raw.departuredate).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'}) :
+                  raw.departureDate ? 
+                  new Date(raw.departureDate).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'}) : null,
+    
+    // Disponibilidade e preço
+    availableSeats: raw.availableseats || raw.availableSeats || 0,
+    pricePerSeat: raw.priceperseat !== undefined && raw.priceperseat !== null ? 
+                  Number(raw.priceperseat) :
+                  raw.pricePerSeat !== undefined && raw.pricePerSeat !== null ? 
+                  Number(raw.pricePerSeat) : null,
+    
+    // Metadados de busca
+    distanceFromUserKm: raw.distance_from_city_km || raw.distanceFromUserKm || null,
+    matchType: raw.match_type || raw.matchType || null,
+    status: raw.status || 'available',
+    
+    // Campos de compatibilidade
+    searchMetadata: raw.search_metadata || raw.searchMetadata || null,
+    createdAt: raw.createdat ? new Date(raw.createdat).toISOString() :
+               raw.createdAt ? new Date(raw.createdAt).toISOString() : null,
+    updatedAt: raw.updatedat ? new Date(raw.updatedat).toISOString() :
+               raw.updatedAt ? new Date(raw.updatedAt).toISOString() : null
   };
-  fromAddress: string;
-  toAddress: string;
-  fromProvince?: string;
-  toProvince?: string;
-  fromCity?: string;
-  toCity?: string;
-  fromDistrict?: string;
-  toDistrict?: string;
-  fromLocality?: string;
-  toLocality?: string;
-  departureDate: Date;
-  departureTime: string;
-  departureDateFormatted?: string;
-  availableSeats: number;
-  pricePerSeat: number | string;
-  vehicleType?: string;
-  status?: string;
-  
-  match_type?: string;
-  route_compatibility?: number;
-  dist_from_user_km?: number;
-  
-  search_metadata?: {
-    original_search: { from: string; to: string };
-    normalized_search: { from: string; to: string };
-    normalization_applied?: boolean;
-    fallback_used?: boolean;
-    function_used?: string;
-  };
-  
-  createdAt?: Date;
-  updatedAt?: Date;
-  maxPassengers?: number;
-  additionalInfo?: string;
-  type?: string;
-  from_geom?: any;
-  to_geom?: any;
-  distance_real_km?: number | string | null;
-  polyline?: any;
 }
 
-// ✅✅✅ FUNÇÃO DE CONVERSÃO COMPLETAMENTE CORRIGIDA COM NOVOS DADOS
-export function toRideWithCompatibility(ride: any): RideWithCompatibility {
-  console.log('🔧 [CONVERSION-DEBUG] Convertendo ride:', {
-    rideId: ride.ride_id || ride.id,
-    hasDriverName: !!ride.driver_name,
-    hasDriverRating: !!ride.driver_rating,
-    hasVehicleMake: !!ride.vehicle_make,
-    hasVehicleModel: !!ride.vehicle_model,
-    hasVehicleType: !!ride.vehicle_type,
-    hasVehiclePlate: !!ride.vehicle_plate,
-    hasVehicleColor: !!ride.vehicle_color,
-    hasMaxPassengers: !!ride.max_passengers,
-    rawRide: ride
-  });
-
-  // ✅ CORREÇÃO CRÍTICA: Mapeamento correto dos campos do PostgreSQL
-  const pricePerSeat = ride.priceperseat || ride.pricePerSeat || '0';
-  const availableSeats = ride.availableseats || ride.availableSeats || 0;
-  const departureDate = ride.departuredate || ride.departureDate;
-  const fromCity = ride.from_city || ride.fromCity || '';
-  const toCity = ride.to_city || ride.toCity || '';
-  const fromAddress = ride.from_address || ride.fromAddress || fromCity;
-  const toAddress = ride.to_address || ride.toAddress || toCity;
-  const distanceRealKm = ride.distance_real_km;
-
-  // ✅ NOVOS CAMPOS: Dados do motorista e veículo
-  const driverName = ride.driver_name || ride.driverName || 'Motorista';
-  const driverRating = ride.driver_rating || ride.driverRating || 4.5;
-  const vehicleMake = ride.vehicle_make || '';
-  const vehicleModel = ride.vehicle_model || 'Veículo';
-  const vehicleType = ride.vehicle_type || ride.vehicleType || 'economy';
-  const vehiclePlate = ride.vehicle_plate || 'Não informada';
-  const vehicleColor = ride.vehicle_color || 'Não informada';
-  const maxPassengers = ride.max_passengers || ride.maxPassengers || 4;
-
-  // ✅ MAPEAMENTO PARA EXIBIÇÃO AMIGÁVEL
-  const typeInfo = VEHICLE_TYPE_DISPLAY[vehicleType] || VEHICLE_TYPE_DISPLAY.economy;
-  
-  const departureDateObj = departureDate ? new Date(departureDate) : new Date();
-  
-  const convertedRide = {
-    id: ride.ride_id || ride.id,
-    driverId: ride.driver_id || ride.driverId,
-    
-    // ✅ NOVOS CAMPOS: Dados do motorista
-    driverName: driverName,
-    driverRating: typeof driverRating === 'string' ? parseFloat(driverRating) : driverRating,
-    
-    // ✅ NOVOS CAMPOS: Dados completos do veículo
-    vehicleInfo: {
-      make: vehicleMake,
-      model: vehicleModel,
-      type: vehicleType,
-      typeDisplay: typeInfo.label,
-      typeIcon: typeInfo.icon,
-      plate: vehiclePlate,
-      color: vehicleColor,
-      maxPassengers: typeof maxPassengers === 'string' ? parseInt(maxPassengers) : maxPassengers
-    },
-    
-    // Campos de localização
-    fromAddress: fromAddress,
-    toAddress: toAddress,
-    fromCity: fromCity,
-    toCity: toCity,
-    fromProvince: ride.from_province || ride.fromProvince || '',
-    toProvince: ride.to_province || ride.toProvince || '',
-    fromDistrict: ride.from_district || ride.fromDistrict || '',
-    toDistrict: ride.to_district || ride.toDistrict || '',
-    fromLocality: ride.from_locality || ride.fromLocality || '',
-    toLocality: ride.to_locality || ride.toLocality || '',
-    
-    // ✅ CORREÇÃO CRÍTICA: Data e hora corretas
-    departureDate: departureDateObj,
-    departureTime: ride.departure_time || ride.departureTime || '08:00',
-    departureDateFormatted: departureDateObj.toLocaleDateString('pt-MZ'),
-    
-    // ✅ CORREÇÃO CRÍTICA: Campos numéricos corretos
-    availableSeats: typeof availableSeats === 'string' ? parseInt(availableSeats) : availableSeats,
-    pricePerSeat: typeof pricePerSeat === 'string' ? parseFloat(pricePerSeat) : pricePerSeat,
-    vehicleType: vehicleType,
-    status: ride.status || 'available',
-    
-    // Campos de matching
-    match_type: ride.match_type || 'smart_match',
-    route_compatibility: ride.route_compatibility || 85,
-    dist_from_user_km: ride.dist_from_user_km || ride.distance_from_city_km || 0,
-    distance_real_km: distanceRealKm ? 
-      (typeof distanceRealKm === 'string' ? parseFloat(distanceRealKm) : distanceRealKm) : 
-      null,
-    
-    // Campos opcionais
-    createdAt: ride.createdAt,
-    updatedAt: ride.updatedAt,
-    maxPassengers: typeof maxPassengers === 'string' ? parseInt(maxPassengers) : maxPassengers,
-    additionalInfo: ride.additional_info || ride.additionalInfo,
-    type: ride.type,
-    from_geom: ride.from_geom,
-    to_geom: ride.to_geom,
-    polyline: ride.polyline,
-    
-    // Metadata de busca
-    search_metadata: ride.search_metadata || {
-      original_search: { from: '', to: '' },
-      normalized_search: { from: '', to: '' }
-    }
-  };
-
-  console.log('✅ [CONVERSION-DEBUG] Ride convertido com dados completos:', {
-    rideId: convertedRide.id,
-    driverName: convertedRide.driverName,
-    driverRating: convertedRide.driverRating,
-    vehicle: `${convertedRide.vehicleInfo.make} ${convertedRide.vehicleInfo.model}`,
-    vehicleType: convertedRide.vehicleInfo.typeDisplay,
-    price: convertedRide.pricePerSeat,
-    availableSeats: convertedRide.availableSeats
-  });
-
-  return convertedRide;
-}
-
-// ✅ INTERFACE PARA RESULTADO DA NORMALIZAÇÃO
-interface NormalizationResult {
-  normalized: string;
-}
-
-// ✅ NORMALIZADOR CORRIGIDO COM TIPAGEM SEGURA
+// ✅ NORMALIZADOR CORRIGIDO - APENAS DRIZZLE SQL
 class LocationNormalizerCorrigido {
   static async normalizeLocation(locationName: string): Promise<string> {
     if (!locationName || locationName.trim() === '') {
@@ -205,32 +95,19 @@ class LocationNormalizerCorrigido {
     try {
       console.log('🔍 [NORMALIZADOR] Normalizando:', locationName);
       
-      const result = await db.execute<NormalizationResult>(sql`
-        SELECT normalize_location_name(${locationName}) as normalized
-      `);
+      // ✅ CORREÇÃO: Usar sql do Drizzle - NUNCA db.query() ou db.execute()
+      const result = await db.execute(
+        sql`SELECT normalize_location_name(${locationName}) as normalized`
+      );
 
-      // ✅ CORREÇÃO: Extrair resultado de forma tipada e segura
-      let normalizedValue: string;
+      // ✅ Extração segura do resultado do Drizzle
+      let normalizedValue: string = locationName.split(',')[0].trim().toLowerCase();
       
-      if (Array.isArray(result) && result.length > 0) {
-        // Caso 1: Resultado é array direto
-        normalizedValue = (result[0] as NormalizationResult)?.normalized;
+      if (result && Array.isArray(result) && result.length > 0) {
+        normalizedValue = (result[0] as any)?.normalized || normalizedValue;
       } else if (result && typeof result === 'object' && 'rows' in result) {
-        // Caso 2: Resultado tem propriedade rows (Drizzle)
-        const rows = (result as any).rows as NormalizationResult[];
-        normalizedValue = rows[0]?.normalized;
-      } else if (result && typeof result === 'object') {
-        // Caso 3: Resultado é objeto genérico
-        const values = Object.values(result);
-        normalizedValue = (values[0] as NormalizationResult)?.normalized;
-      } else {
-        // Fallback seguro
-        normalizedValue = locationName.split(',')[0].trim().toLowerCase();
-      }
-
-      // Fallback final se ainda estiver undefined
-      if (!normalizedValue) {
-        normalizedValue = locationName.split(',')[0].trim().toLowerCase();
+        const rows = (result as any).rows;
+        normalizedValue = rows[0]?.normalized || normalizedValue;
       }
 
       console.log('✅ [NORMALIZADOR] Resultado:', {
@@ -242,14 +119,12 @@ class LocationNormalizerCorrigido {
 
     } catch (error) {
       console.error('❌ [NORMALIZADOR] Erro, usando fallback:', error);
-      // Fallback conservador: pega apenas a primeira palavra antes da vírgula
       return locationName.split(',')[0].trim().toLowerCase();
     }
   }
 
-  // Método de compatibilidade para não quebrar código existente
   static normalizeForSearch(locationName: string): string {
-    console.warn('⚠️ [NORMALIZADOR] Usando normalizeForSearch síncrono - considere usar normalizeLocation assíncrono');
+    console.warn('⚠️ [NORMALIZADOR] Usando normalizeForSearch síncrono');
     return locationName.split(',')[0].trim().toLowerCase();
   }
 }
@@ -267,7 +142,7 @@ export class RideService {
     radiusKm?: number;
     maxResults?: number;
     status?: string;
-  }): Promise<RideWithCompatibility[]> {
+  }): Promise<any[]> {
     try {
       const {
         fromLocation,
@@ -280,7 +155,7 @@ export class RideService {
         maxResults = 20,
       } = params;
 
-      // ✅ CORREÇÃO CRÍTICA: Usar normalizador assíncrono do PostgreSQL
+      // ✅ CORREÇÃO: Usar normalizador assíncrono
       const normalizedFrom = fromLocation ? await LocationNormalizerCorrigido.normalizeLocation(fromLocation) : '';
       const normalizedTo = toLocation ? await LocationNormalizerCorrigido.normalizeLocation(toLocation) : '';
 
@@ -290,25 +165,19 @@ export class RideService {
         radius: radiusKm
       });
 
-      const result = await db.execute(sql`
-        SELECT * FROM get_rides_smart_final(
-          ${normalizedFrom || ''},
-          ${normalizedTo || ''},  
-          ${radiusKm}
-        );
-      `);
+      // ✅ CORREÇÃO: Usar sql do Drizzle para funções PostgreSQL
+      const result = await db.execute(
+        sql`SELECT * FROM get_rides_smart_final(${normalizedFrom || ''}, ${normalizedTo || ''}, ${radiusKm})`
+      );
 
-      // ✅✅✅ CORREÇÃO CRÍTICA: INTERPRETAR CORRETAMENTE O RESULTADO
-      console.log('🔍 [SMART-SERVICE] Resultado bruto completo:', result);
-      
+      // ✅ Extração segura dos resultados
       let rows: any[] = [];
       
       if (Array.isArray(result)) {
         rows = result;
-      } else if (result && Array.isArray((result as any).rows)) {
+      } else if (result && typeof result === 'object' && 'rows' in result) {
         rows = (result as any).rows;
       } else if (result && typeof result === 'object') {
-        // Extrai todas as propriedades que são arrays
         const arrayProperties = Object.values(result).filter(val => Array.isArray(val));
         if (arrayProperties.length > 0) {
           rows = arrayProperties[0] as any[];
@@ -320,31 +189,22 @@ export class RideService {
         primeiroResultado: rows[0] || 'Nenhum'
       });
 
-      const transformedRides = rows.slice(0, maxResults).map((ride: any) => 
-        toRideWithCompatibility({
-          ...ride,
-          search_metadata: {
-            original_search: { from: fromLocation || '', to: toLocation || '' },
-            normalized_search: { from: normalizedFrom, to: normalizedTo },
-            normalization_applied: fromLocation !== normalizedFrom || toLocation !== normalizedTo
-          }
-        })
-      );
+      // ✅ APLICAÇÃO DA NORMALIZAÇÃO PARA FRONTEND
+      const normalizedRides = rows.slice(0, maxResults).map(normalizeDbRideToDto);
 
-      // ✅ TESTE DE VERIFICAÇÃO DA CONVERSÃO
-      console.log('🎯 [CONVERSION-VERIFICATION] Verificação final:', {
-        inputRides: rows.length,
-        outputRides: transformedRides.length,
-        sampleInput: rows[0],
-        sampleOutput: transformedRides[0],
-        conversionIssues: transformedRides.filter(ride => 
-          !ride.departureDate || 
-          ride.availableSeats === 0 || 
-          ride.pricePerSeat === 0
-        ).length
+      console.log('🎯 [NORMALIZAÇÃO-FRONTEND] Rides normalizados:', normalizedRides.length);
+      normalizedRides.forEach((ride: any, index: number) => {
+        console.log(`🎯 Ride ${index + 1}:`, {
+          id: ride.id,
+          fromCity: ride.fromCity,
+          toCity: ride.toCity,
+          departureDate: ride.departureDate,
+          pricePerSeat: ride.pricePerSeat,
+          availableSeats: ride.availableSeats
+        });
       });
       
-      return transformedRides;
+      return normalizedRides;
 
     } catch (error) {
       console.error("❌ Erro em getRidesUniversal:", error);
@@ -353,9 +213,8 @@ export class RideService {
   }
 
   // 🔍 BUSCA TRADICIONAL POR TEXTO - CORRIGIDA
-  async findRidesExact(fromLocation: string, toLocation: string): Promise<RideWithCompatibility[]> {
+  async findRidesExact(fromLocation: string, toLocation: string): Promise<any[]> {
     try {
-      // ✅ CORREÇÃO: Usar normalizador assíncrono
       const normalizedFrom = await LocationNormalizerCorrigido.normalizeLocation(fromLocation);
       const normalizedTo = await LocationNormalizerCorrigido.normalizeLocation(toLocation);
 
@@ -381,7 +240,7 @@ export class RideService {
     passengerTo: string, 
     passengerFromProvince?: string, 
     passengerToProvince?: string
-  ): Promise<RideWithCompatibility[]> {
+  ): Promise<any[]> {
     try {
       console.log('🧠 [FIND-SMART] Busca inteligente:', {
         from: passengerFrom,
@@ -390,7 +249,6 @@ export class RideService {
         toProvince: passengerToProvince
       });
 
-      // ✅ CORREÇÃO: Usar normalizador assíncrono
       const normalizedFrom = await LocationNormalizerCorrigido.normalizeLocation(passengerFrom);
       const normalizedTo = await LocationNormalizerCorrigido.normalizeLocation(passengerTo);
 
@@ -403,7 +261,6 @@ export class RideService {
     } catch (error) {
       console.error("❌ Erro em findSmartRides:", error);
       
-      // ✅ CORREÇÃO: Usar normalizador assíncrono no fallback também
       const normalizedFrom = await LocationNormalizerCorrigido.normalizeLocation(passengerFrom);
       const normalizedTo = await LocationNormalizerCorrigido.normalizeLocation(passengerTo);
       
@@ -430,9 +287,8 @@ export class RideService {
       toLng?: number;
       radiusKm?: number;
     }
-  ): Promise<RideWithCompatibility[]> {
+  ): Promise<any[]> {
     try {
-      // ✅ CORREÇÃO: Usar normalizador assíncrono
       const normalizedFrom = await LocationNormalizerCorrigido.normalizeLocation(fromLocation);
       const normalizedTo = await LocationNormalizerCorrigido.normalizeLocation(toLocation);
 
@@ -455,7 +311,6 @@ export class RideService {
     } catch (error) {
       console.error("❌ Erro em searchRidesHybrid:", error);
       
-      // ✅ CORREÇÃO: Usar normalizador assíncrono no fallback
       const normalizedFrom = await LocationNormalizerCorrigido.normalizeLocation(fromLocation);
       const normalizedTo = await LocationNormalizerCorrigido.normalizeLocation(toLocation);
       
@@ -472,11 +327,10 @@ export class RideService {
     fromLocation?: string; 
     toLocation?: string;
     status?: string;
-  } = {}): Promise<RideWithCompatibility[]> {
+  } = {}): Promise<any[]> {
     try {
       const { fromLocation, toLocation, status } = filters;
       
-      // ✅ CORREÇÃO: Usar normalizador assíncrono
       const normalizedFrom = fromLocation ? await LocationNormalizerCorrigido.normalizeLocation(fromLocation) : undefined;
       const normalizedTo = toLocation ? await LocationNormalizerCorrigido.normalizeLocation(toLocation) : undefined;
 
@@ -500,9 +354,8 @@ export class RideService {
   }
 
   // 🌍 BUSCA RIDES ENTRE DUAS CIDADES - CORRIGIDA
-  async getRidesBetweenCities(fromCity: string, toCity: string, radiusKm: number = 100): Promise<RideWithCompatibility[]> {
+  async getRidesBetweenCities(fromCity: string, toCity: string, radiusKm: number = 100): Promise<any[]> {
     try {
-      // ✅ CORREÇÃO: Usar normalizador assíncrono
       const normalizedFrom = await LocationNormalizerCorrigido.normalizeLocation(fromCity);
       const normalizedTo = await LocationNormalizerCorrigido.normalizeLocation(toCity);
 
@@ -531,7 +384,7 @@ export class RideService {
     radiusKm: number = 100,
     toLat?: number,
     toLng?: number
-  ): Promise<RideWithCompatibility[]> {
+  ): Promise<any[]> {
     try {
       console.log('🧠 [NEARBY-RIDES] Busca por proximidade:', {
         lat, lng, radiusKm
@@ -552,89 +405,71 @@ export class RideService {
   }
 
   // 🆕 MÉTODO ESPECÍFICO PARA BUSCA SMART FINAL - CORRIGIDO
-  async searchRidesSmartFinal(
-    fromCity: string,
-    toCity: string, 
-    radiusKm: number = 100
-  ): Promise<RideWithCompatibility[]> {
+  async searchRidesSmartFinal(params: {
+    fromCity?: string;
+    toCity?: string;
+    fromLat?: number;
+    fromLng?: number;
+    toLat?: number;
+    toLng?: number;
+    date?: string;
+    passengers?: number;
+    radiusKm?: number;
+  }): Promise<any[]> {
     try {
-      // ✅ CORREÇÃO CRÍTICA: Usar normalizador assíncrono
-      const normalizedFrom = await LocationNormalizerCorrigido.normalizeLocation(fromCity);
-      const normalizedTo = await LocationNormalizerCorrigido.normalizeLocation(toCity);
+      const { fromCity, toCity, fromLat, fromLng, toLat, toLng, date, passengers = 1, radiusKm = 100 } = params;
+
+      const normalizedFrom = fromCity ? await LocationNormalizerCorrigido.normalizeLocation(fromCity) : '';
+      const normalizedTo = toCity ? await LocationNormalizerCorrigido.normalizeLocation(toCity) : '';
 
       console.log('🎯 [NORMALIZAÇÃO-CORRIGIDA-SMART-FINAL]', {
         original: { from: fromCity, to: toCity },
-        normalized: { from: normalizedFrom, to: normalizedTo }
+        normalized: { from: normalizedFrom, to: normalizedTo },
+        radiusKm
       });
 
-      const result = await db.execute(sql`
-        SELECT * FROM get_rides_smart_final(
-          ${normalizedFrom},
-          ${normalizedTo}, 
-          ${radiusKm}
-        );
-      `);
-
-      // ✅✅✅ CORREÇÃO CRÍTICA: INTERPRETAR CORRETAMENTE O RESULTADO
-      console.log('🔍 [SERVICE-DEBUG-CRITICAL] Resultado bruto completo:', result);
+      // ✅ CORREÇÃO: Usar sql do Drizzle
+      const result = await db.execute(
+        sql`SELECT * FROM get_rides_smart_final(${normalizedFrom || ''}, ${normalizedTo || ''}, ${radiusKm})`
+      );
       
+      // ✅ Extração segura dos resultados
       let rows: any[] = [];
       
       if (Array.isArray(result)) {
         rows = result;
-      } else if (result && Array.isArray((result as any).rows)) {
+      } else if (result && typeof result === 'object' && 'rows' in result) {
         rows = (result as any).rows;
-      } else if (result && typeof result === 'object') {
-        // Extrai todas as propriedades que são arrays
-        const arrayProperties = Object.values(result).filter(val => Array.isArray(val));
-        if (arrayProperties.length > 0) {
-          rows = arrayProperties[0] as any[];
-        }
       }
       
-      console.log('✅ [SERVICE-DEBUG-CRITICAL] Resultados processados:', {
-        totalEncontrado: rows.length,
-        primeiroResultado: rows[0] || 'Nenhum'
-      });
-
-      const transformedRides = rows.map((ride: any) => {
-        return toRideWithCompatibility({
-          ...ride,
-          search_metadata: {
-            original_search: { from: fromCity, to: toCity },
-            normalized_search: { from: normalizedFrom, to: normalizedTo },
-            function_used: 'get_rides_smart_final'
-          }
+      // ✅ APLICAÇÃO DA NORMALIZAÇÃO
+      const normalizedRides = rows.map(normalizeDbRideToDto);
+      
+      console.log('🔍 Rides normalizados para frontend:', normalizedRides.length);
+      normalizedRides.forEach((ride: any, index: number) => {
+        console.log(`🎯 Ride ${index + 1}:`, {
+          id: ride.id,
+          fromCity: ride.fromCity,
+          toCity: ride.toCity,
+          departureDate: ride.departureDate,
+          pricePerSeat: ride.pricePerSeat,
+          availableSeats: ride.availableSeats
         });
       });
-
-      // ✅ VERIFICAÇÃO CRÍTICA DA CONVERSÃO
-      console.log('🎉 [SERVICE-DEBUG-CRITICAL] Busca BEM-SUCEDIDA:', {
-        normalizedFrom,
-        normalizedTo, 
-        resultados: transformedRides.length,
-        amostra: transformedRides[0] || 'Nenhum',
-        conversionIssues: transformedRides.filter(ride => 
-          !ride.departureDate || 
-          ride.availableSeats === 0 || 
-          ride.pricePerSeat === 0
-        ).length
-      });
-
-      return transformedRides;
-
+      
+      return normalizedRides;
     } catch (error) {
-      console.error("❌ [SERVICE-DEBUG-CRITICAL] ERRO:", error);
-      return [];
+      console.error("❌ Erro no searchRidesSmartFinal:", error);
+      throw error;
     }
   }
 
-  // 🆕 MÉTODO DE FALLBACK DIRETO
+  // 🆕 MÉTODO DE FALLBACK DIRETO - USANDO DRIZZLE ORM
   async searchRidesDirectFallback(
     fromCity: string,
     toCity: string, 
     radiusKm: number = 100
-  ): Promise<RideWithCompatibility[]> {
+  ): Promise<any[]> {
     try {
       console.log('🔧 [FALLBACK] Usando busca direta como fallback:', {
         fromCity,
@@ -642,6 +477,7 @@ export class RideService {
         radiusKm
       });
 
+      // ✅ CORREÇÃO: Usar Drizzle ORM para queries SQL complexas
       const result = await db.execute(sql`
         SELECT 
           r.id as ride_id,
@@ -680,23 +516,22 @@ export class RideService {
         LIMIT 20
       `);
 
-      const rows = (result as any).rows || [];
+      // ✅ Extração segura dos resultados
+      let rows: any[] = [];
+      
+      if (Array.isArray(result)) {
+        rows = result;
+      } else if (result && typeof result === 'object' && 'rows' in result) {
+        rows = (result as any).rows;
+      }
+      
       console.log('✅ [FALLBACK] Resultados da busca direta:', {
         fromCity,
         toCity,
         resultsCount: rows.length
       });
 
-      return rows.map((ride: any) => 
-        toRideWithCompatibility({
-          ...ride,
-          search_metadata: {
-            original_search: { from: fromCity, to: toCity },
-            fallback_used: true,
-            function_used: 'direct_fallback'
-          }
-        })
-      );
+      return rows.map(normalizeDbRideToDto);
 
     } catch (error) {
       console.error("❌ Erro em searchRidesDirectFallback:", error);
@@ -705,7 +540,7 @@ export class RideService {
   }
 
   // 🆕 MÉTODO PARA OBTER RIDE POR ID
-  async getRideById(id: string): Promise<RideWithCompatibility | null> {
+  async getRideById(id: string): Promise<any | null> {
     try {
       const [ride] = await db.select()
         .from(rides)
@@ -713,7 +548,7 @@ export class RideService {
       
       if (!ride) return null;
 
-      return toRideWithCompatibility(ride);
+      return normalizeDbRideToDto(ride);
 
     } catch (error) {
       console.error("❌ Erro em getRideById:", error);
@@ -722,7 +557,7 @@ export class RideService {
   }
 
   // 🆕 MÉTODO PARA BUSCAR RIDES POR MOTORISTA
-  async getRidesByDriver(driverId: string, status?: string): Promise<RideWithCompatibility[]> {
+  async getRidesByDriver(driverId: string, status?: string): Promise<any[]> {
     try {
       let query = db.select().from(rides);
       const conditions = [eq(rides.driverId, driverId)];
@@ -733,7 +568,7 @@ export class RideService {
       
       const result = await query.where(and(...conditions));
       
-      return result.map(ride => toRideWithCompatibility(ride));
+      return result.map(ride => normalizeDbRideToDto(ride));
 
     } catch (error) {
       console.error("❌ Erro em getRidesByDriver:", error);
@@ -742,7 +577,7 @@ export class RideService {
   }
 
   // 🆕 MÉTODO SIMPLES PARA TODOS OS RIDES DISPONÍVEIS
-  async getAllAvailableRides(): Promise<RideWithCompatibility[]> {
+  async getAllAvailableRides(): Promise<any[]> {
     try {
       return await this.getRidesUniversal({
         maxResults: 100,
@@ -755,7 +590,7 @@ export class RideService {
   }
 
   // 🆕 MÉTODO PARA CRIAR RIDE
-  async createRide(rideData: Omit<Ride, 'id' | 'createdAt' | 'updatedAt'>): Promise<RideWithCompatibility> {
+  async createRide(rideData: Omit<Ride, 'id' | 'createdAt' | 'updatedAt'>): Promise<any> {
     try {
       const normalizedRideData = {
         ...rideData,
@@ -774,7 +609,7 @@ export class RideService {
         .values(normalizedRideData)
         .returning();
 
-      return toRideWithCompatibility(newRide);
+      return normalizeDbRideToDto(newRide);
 
     } catch (error) {
       console.error("❌ Erro em createRide:", error);
@@ -783,7 +618,7 @@ export class RideService {
   }
 
   // 🆕 MÉTODO PARA ATUALIZAR RIDE
-  async updateRide(id: string, rideData: Partial<Omit<Ride, 'id' | 'createdAt' | 'updatedAt'>>): Promise<RideWithCompatibility | null> {
+  async updateRide(id: string, rideData: Partial<Omit<Ride, 'id' | 'createdAt' | 'updatedAt'>>): Promise<any | null> {
     try {
       const updateData: any = { 
         ...rideData, 
@@ -818,7 +653,7 @@ export class RideService {
 
       if (!updatedRide) return null;
 
-      return toRideWithCompatibility(updatedRide);
+      return normalizeDbRideToDto(updatedRide);
 
     } catch (error) {
       console.error("❌ Erro em updateRide:", error);
@@ -842,7 +677,7 @@ export class RideService {
   }
 
   // 🔄 MÉTODOS AUXILIARES PRIVADOS
-  private async getRidesByIds(ids: string[]): Promise<RideWithCompatibility[]> {
+  private async getRidesByIds(ids: string[]): Promise<any[]> {
     if (ids.length === 0) return [];
     
     try {
@@ -850,7 +685,7 @@ export class RideService {
         .from(rides)
         .where(inArray(rides.id, ids));
       
-      return result.map(ride => toRideWithCompatibility(ride));
+      return result.map(ride => normalizeDbRideToDto(ride));
     } catch (error) {
       console.error("❌ Erro em getRidesByIds:", error);
       return [];

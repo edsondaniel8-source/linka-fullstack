@@ -8,15 +8,63 @@ import { Label } from "@/shared/components/ui/label";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/hooks/use-toast";
-import { ArrowLeft, Phone, Mail, CreditCard, User, Star, MapPin, Navigation, RefreshCw } from "lucide-react";
+import { ArrowLeft, Phone, Mail, CreditCard, User, Star, MapPin, Navigation, RefreshCw, XCircle } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import PageHeader from "@/shared/components/PageHeader";
 import MobileNavigation from "@/shared/components/MobileNavigation";
 import useAuth from "@/shared/hooks/useAuth";
 
-// ✅ IMPORTAR INTERFACE E FUNÇÃO DE MAPEAMENTO
-import { type Ride } from '@/api/client/rides';
-import { mapRidesToFrontend, type RideFrontend } from '../../../../../types/rideFrontend';
+// ✅✅✅ CORREÇÃO: IMPORTAR FUNÇÃO DE NORMALIZAÇÃO DO API SERVICE
+import { normalizeRide, formatPrice, type Ride } from "@/services/api";
+
+// ✅✅✅ CORREÇÃO: INTERFACE COMPATÍVEL COM A Ride DO SERVIÇO API
+export interface RideFrontend {
+  // ✅ Campos básicos da interface Ride do serviço
+  id: string;
+  driverId: string;
+  driverName: string;
+  driverRating: number;
+  fromLocation: string;
+  toLocation: string;
+  fromCity: string;
+  toCity: string;
+  fromAddress: string;
+  toAddress: string;
+  fromProvince?: string;
+  toProvince?: string;
+  departureDate: string;
+  departureTime: string;
+  price: number;
+  pricePerSeat: number;
+  availableSeats: number;
+  maxPassengers: number;
+  vehicle: string;
+  vehicleType: string;
+  status: string;
+  type: string;
+  
+  // ✅ Campos opcionais que podem vir do backend
+  currentPassengers?: number;
+  vehicleInfo?: any;
+  description?: string;
+  vehiclePhoto?: string;
+  estimatedDuration?: number;
+  estimatedDistance?: number;
+  allowNegotiation?: boolean;
+  allowPickupEnRoute?: boolean;
+  isVerifiedDriver?: boolean;
+  driver?: {
+    firstName?: string;
+    lastName?: string;
+    rating?: number;
+    isVerified?: boolean;
+  };
+  from_lat?: number;
+  from_lng?: number;
+  to_lat?: number;
+  to_lng?: number;
+  vehicleFeatures?: string[];
+}
 
 // ✅ CORREÇÃO: Interface MatchStats atualizada
 export interface MatchStats {
@@ -39,7 +87,7 @@ export interface RideMatchInfo {
   distance_to_city_km?: number;
 }
 
-// ✅ TIPO COMBINADO PARA RIDE COM MATCHING - AGORA USANDO RideFrontend
+// ✅✅✅ CORREÇÃO: TIPO COMBINADO PARA RIDE COM MATCHING
 type RideWithMatch = RideFrontend & RideMatchInfo;
 
 // ✅ INTERFACE EXTENDIDA PARA PARÂMETROS DE BUSCA COM COORDENADAS
@@ -73,6 +121,96 @@ interface BookingRequest {
   pickupLocation: string;
   notes: string;
 }
+
+// ✅✅✅ CORREÇÃO: FUNÇÃO DE MAPEAMENTO COMPATÍVEL COM A Ride DO SERVIÇO
+const mapRidesToFrontend = (rides: any[]): RideWithMatch[] => {
+  console.log('🔄 [MAPEAMENTO-LOCAL] Mapeando rides para frontend:', rides?.length || 0);
+  
+  if (!rides || !Array.isArray(rides)) {
+    console.warn('⚠️ [MAPEAMENTO-LOCAL] Dados inválidos para mapeamento');
+    return [];
+  }
+
+  return rides.map((ride, index) => {
+    console.log(`🚗 [MAPEAMENTO-${index}] Processando ride:`, {
+      id: ride.id,
+      driverName: ride.driverName,
+      price: ride.price,
+      fromLocation: ride.fromLocation,
+      toLocation: ride.toLocation
+    });
+
+    // ✅✅✅ CORREÇÃO: Usar normalizeRide do serviço API para consistência
+    const normalizedRide = normalizeRide(ride);
+    
+    // ✅✅✅ CORREÇÃO: Extrair campos adicionais do ride original antes da normalização
+    const additionalFields = {
+      currentPassengers: ride.currentPassengers || ride.current_passengers || 0,
+      vehicleInfo: ride.vehicleInfo,
+      description: ride.description,
+      vehiclePhoto: ride.vehiclePhoto || ride.vehicle_photo,
+      estimatedDuration: ride.estimatedDuration || ride.estimated_duration,
+      estimatedDistance: ride.estimatedDistance || ride.estimated_distance,
+      allowNegotiation: ride.allowNegotiation,
+      allowPickupEnRoute: ride.allowPickupEnRoute,
+      isVerifiedDriver: ride.isVerifiedDriver,
+      driver: ride.driver,
+      from_lat: ride.from_lat || ride.fromLat,
+      from_lng: ride.from_lng || ride.fromLng,
+      to_lat: ride.to_lat || ride.toLat,
+      to_lng: ride.to_lng || ride.toLng,
+      vehicleFeatures: ride.vehicleFeatures,
+      
+      // Campos de matching
+      match_type: ride.match_type || ride.matchType,
+      route_compatibility: ride.route_compatibility || ride.matchScore || 0,
+      matchScore: ride.matchScore || ride.route_compatibility || 0,
+      dist_from_user_km: ride.dist_from_user_km || ride.distanceFromUserKm,
+      distance_from_city_km: ride.distance_from_city_km || ride.distanceFromCityKm,
+      distance_to_city_km: ride.distance_to_city_km || ride.distanceToCityKm,
+    };
+
+    // ✅✅✅ CORREÇÃO: Criar objeto compatível com RideFrontend
+    const mappedRide: RideWithMatch = {
+      // ✅ Campos básicos da interface Ride
+      id: normalizedRide.id || '',
+      driverId: normalizedRide.driverId || '',
+      driverName: normalizedRide.driverName || 'Motorista não disponível',
+      driverRating: normalizedRide.driverRating || 4.5,
+      fromLocation: normalizedRide.fromLocation || normalizedRide.fromCity || 'Localização não disponível',
+      toLocation: normalizedRide.toLocation || normalizedRide.toCity || 'Localização não disponível',
+      fromCity: normalizedRide.fromCity || 'Cidade não disponível',
+      toCity: normalizedRide.toCity || 'Cidade não disponível',
+      fromAddress: normalizedRide.fromAddress || normalizedRide.fromLocation || 'Endereço não disponível',
+      toAddress: normalizedRide.toAddress || normalizedRide.toLocation || 'Endereço não disponível',
+      fromProvince: normalizedRide.fromProvince || '',
+      toProvince: normalizedRide.toProvince || '',
+      departureDate: normalizedRide.departureDate || '',
+      departureTime: normalizedRide.departureTime || '',
+      price: normalizedRide.price || 0,
+      pricePerSeat: normalizedRide.pricePerSeat || normalizedRide.price || 0,
+      availableSeats: normalizedRide.availableSeats || 0,
+      maxPassengers: normalizedRide.maxPassengers || 4,
+      vehicle: normalizedRide.vehicle || 'Veículo não disponível',
+      vehicleType: normalizedRide.vehicleType || 'economy',
+      status: normalizedRide.status || 'available',
+      type: normalizedRide.type || 'one-way',
+      
+      // ✅ Campos adicionais (opcionais)
+      ...additionalFields
+    };
+
+    console.log(`✅ [MAPEAMENTO-${index}] Ride mapeado:`, {
+      id: mappedRide.id,
+      driverName: mappedRide.driverName,
+      price: mappedRide.price,
+      match_type: mappedRide.match_type,
+      route_compatibility: mappedRide.route_compatibility
+    });
+
+    return mappedRide;
+  });
+};
 
 export default function RideSearchPage() {
   const [location, setLocation] = useLocation();
@@ -195,7 +333,7 @@ export default function RideSearchPage() {
     setLocation('/');
   };
 
-  // ✅✅✅ CORREÇÃO CRÍTICA: Função fetchSmartRides SIMPLIFICADA - SEM MAPEAMENTO MANUAL
+  // ✅✅✅ CORREÇÃO CRÍTICA: Função fetchSmartRides SIMPLIFICADA
   const fetchSmartRides = async (params: RideSearchParamsExtended): Promise<RideWithMatch[]> => {
     try {
       console.log('🧠 [SMART-FINAL] Buscando com parâmetros:', {
@@ -215,7 +353,7 @@ export default function RideSearchPage() {
 
       console.log('🔍 [DEBUG-SMART-PARAMS] URL que será enviada:', `/api/rides/smart/search?${smartParams.toString()}`);
 
-      // ✅✅✅ CORREÇÃO CRÍTICA: Usar endpoint CORRETO - /api/rides/smart/search (NÃO provider)
+      // ✅✅✅ CORREÇÃO CRÍTICA: Usar endpoint CORRETO - /api/rides/smart/search
       const response = await fetch(`/api/rides/smart/search?${smartParams.toString()}`);
       
       if (!response.ok) {
@@ -227,42 +365,30 @@ export default function RideSearchPage() {
       
       console.log('✅ Resposta smart final:', {
         success: data.success,
-        totalRides: data.data?.rides?.length || 0,
+        totalRides: data.data?.rides?.length || data.results?.length || 0,
         smartSearch: data.smart_search,
         matchStats: data.data?.stats,
-        // ✅ ADICIONAR: Verificar normalização
-        normalization: data.data?.normalization,
-        searchMetadata: data.data?.search_metadata
+        searchMetadata: data.metadata
       });
 
       // ✅ CORREÇÃO: Processar resposta específica da função smart final
-      if (data.success && data.data) {
-        const ridesArray = Array.isArray(data.data.rides) ? data.data.rides : [];
+      if (data.success) {
+        const ridesArray = Array.isArray(data.data?.rides) ? data.data.rides : 
+                          Array.isArray(data.results) ? data.results : 
+                          Array.isArray(data.rides) ? data.rides : [];
         
-        // ✅✅✅ CORREÇÃO CRÍTICA: USAR mapRidesToFrontend EM VEZ DE MAPEAMENTO MANUAL
+        // ✅✅✅ CORREÇÃO CRÍTICA: USAR mapRidesToFrontend LOCAL
         console.log('🔄 [MAPEAMENTO-AUTO] Aplicando mapRidesToFrontend...');
         const mappedRides: RideWithMatch[] = mapRidesToFrontend(ridesArray);
         
         console.log('🎯 Rides mapeados do smart final:', mappedRides.length);
         
-        // ✅ LOG DETALHADO DOS MATCHES ENCONTRADOS E NORMALIZAÇÃO
+        // ✅ LOG DETALHADO DOS MATCHES ENCONTRADOS
         if (mappedRides.length > 0) {
           const exactMatches = mappedRides.filter(r => r.match_type === 'exact_match').length;
           const smartMatches = mappedRides.filter(r => r.match_type && r.match_type !== 'exact_match').length;
           
-          // ✅ VERIFICAR SE HOUVE NORMALIZAÇÃO
-          const normalizationApplied = data.data?.normalization?.applied || false;
-          const originalTerms = data.data?.normalization?.original;
-          const normalizedTerms = data.data?.normalization?.normalized;
-          
           console.log(`📊 Estatísticas Smart: ${exactMatches} exatos, ${smartMatches} inteligentes`);
-          
-          if (normalizationApplied) {
-            console.log('🔄 NORMALIZAÇÃO APLICADA:', {
-              original: originalTerms,
-              normalized: normalizedTerms
-            });
-          }
         }
         
         return mappedRides;
@@ -306,7 +432,7 @@ export default function RideSearchPage() {
       const data = await response.json();
       console.log('✅ [TRADITIONAL-SECONDARY] Resultados:', data.length);
       
-      // ✅✅✅ CORREÇÃO: USAR mapRidesToFrontend também para resultados tradicionais
+      // ✅✅✅ CORREÇÃO: USAR mapRidesToFrontend local para resultados tradicionais
       return mapRidesToFrontend(data);
       
     } catch (error) {
@@ -362,7 +488,7 @@ export default function RideSearchPage() {
     }
   };
 
-  // ✅✅✅ CORREÇÃO: executeSearchWithParams recebe parâmetros explicitamente - AGORA COM MAPEAMENTO
+  // ✅✅✅ CORREÇÃO: executeSearchWithParams recebe parâmetros explicitamente
   const executeSearchWithParams = async (params: RideSearchParamsExtended) => {
     console.log('🚀 [EXECUTE-SEARCH] Executando busca com parâmetros:', {
       from: params.from,
@@ -388,16 +514,11 @@ export default function RideSearchPage() {
         console.log('📊 [SECONDARY-TRADITIONAL-RESULTS] Resultados tradicionais:', searchResults.length);
       }
       
-      // ✅✅✅ CORREÇÃO CRÍTICA: MAPEAR OS RESULTADOS PARA O FRONTEND
-      console.log('🔄 [MAPEAMENTO] Aplicando mapeamento para frontend...');
-      const mappedRides: RideWithMatch[] = mapRidesToFrontend(searchResults);
-      console.log('✅ [MAPEAMENTO] Resultados mapeados:', mappedRides.length);
-      
-      // ✅ CORREÇÃO: Exibir estatísticas de matching
-      if (mappedRides.length > 0) {
-        const smartMatches = mappedRides.filter(r => r.match_type).length;
-        const exactMatches = mappedRides.filter(r => r.match_type === 'exact_match').length;
-        const similarMatches = mappedRides.filter(r => 
+      // ✅✅✅ CORREÇÃO: Exibir estatísticas de matching
+      if (searchResults.length > 0) {
+        const smartMatches = searchResults.filter(r => r.match_type).length;
+        const exactMatches = searchResults.filter(r => r.match_type === 'exact_match').length;
+        const similarMatches = searchResults.filter(r => 
           r.match_type === 'same_segment' || r.match_type === 'same_direction'
         ).length;
         
@@ -405,25 +526,25 @@ export default function RideSearchPage() {
         
         // ✅ FEEDBACK POSITIVO PARA BUSCA INTELIGENTE
         toast({
-          title: `🎯 ${mappedRides.length} viagens encontradas`,
+          title: `🎯 ${searchResults.length} viagens encontradas`,
           description: `${exactMatches} matchs exatos + ${similarMatches} rotas similares`,
           variant: "default",
           duration: 4000,
         });
       }
 
-      // ✅✅✅ CORREÇÃO: Usar os rides mapeados em vez dos originais
-      setRides(mappedRides);
+      // ✅✅✅ CORREÇÃO: Usar os rides mapeados
+      setRides(searchResults);
       
       // ✅ ATUALIZAR SESSION STORAGE
       const searchState: LocationState = {
-        rides: mappedRides,
+        rides: searchResults,
         searchParams: params, // ✅ Usar params passados
         timestamp: Date.now()
       };
       sessionStorage.setItem('lastSearchResults', JSON.stringify(searchState));
 
-      if (mappedRides.length === 0) {
+      if (searchResults.length === 0) {
         toast({
           title: "Nenhuma viagem encontrada",
           description: "Tente aumentar o raio de busca para encontrar rotas similares",
@@ -431,7 +552,7 @@ export default function RideSearchPage() {
           duration: 3000,
         });
       } else {
-        console.log('✅ [SEARCH-SUCCESS] Busca concluída:', mappedRides.length, 'resultados');
+        console.log('✅ [SEARCH-SUCCESS] Busca concluída:', searchResults.length, 'resultados');
       }
 
     } catch (error) {
@@ -454,8 +575,8 @@ export default function RideSearchPage() {
 
   // 🆕 Função para obter nome do motorista (compatibilidade) - CORRIGIDA
   const getDriverName = (ride: RideFrontend): string => {
-    if (ride.driver) {
-      // ✅ CORREÇÃO: Evitar "undefined undefined"
+    if (ride.driver && typeof ride.driver === 'object') {
+      // ✅ CORREÇÃO: Verificar se driver é um objeto
       return `${ride.driver.firstName ?? ''} ${ride.driver.lastName ?? ''}`.trim() || 'Motorista';
     }
     return ride.driverName || 'Motorista';
@@ -463,16 +584,52 @@ export default function RideSearchPage() {
 
   // 🆕 Função para obter rating do motorista (compatibilidade) - CORRIGIDA
   const getDriverRating = (ride: RideFrontend): string => {
-    if (ride.driver?.rating !== undefined) {
+    if (ride.driver && typeof ride.driver === 'object' && ride.driver.rating !== undefined) {
       return ride.driver.rating.toString();
     }
-    return ride.driverRating?.toString() || 'N/A';
+    return ride.driverRating?.toString() || '4.5';
   };
 
-  // 🆕 Função para calcular assentos disponíveis - CORRIGIDA
+  // ✅✅✅ CORREÇÃO COMPLETA: Função getAvailableSeats robusta
   const getAvailableSeats = (ride: RideFrontend): number => {
-    // ✅ CORREÇÃO: Tratar 0 corretamente
-    return ride.availableSeats !== undefined ? ride.availableSeats : (ride.maxPassengers || 4) - (ride.currentPassengers || 0);
+    if (!ride) {
+      console.warn('⚠️ [SEATS] Ride undefined');
+      return 0;
+    }
+    
+    console.log('🔍 [SEATS] Analisando assentos do ride:', {
+      id: ride.id,
+      availableSeats: ride.availableSeats,
+      maxPassengers: ride.maxPassengers,
+      currentPassengers: ride.currentPassengers
+    });
+
+    // ✅ CORREÇÃO: Usar availableSeats diretamente
+    let availableSeats = Number(ride.availableSeats || 0);
+    
+    // ✅ CORREÇÃO: Se availableSeats for 0, tentar calcular a partir de maxPassengers
+    if (availableSeats === 0) {
+      const maxPassengers = Number(ride.maxPassengers || 0);
+      const currentPassengers = Number(ride.currentPassengers || 0);
+      
+      if (maxPassengers > 0) {
+        const calculatedSeats = maxPassengers - currentPassengers;
+        if (calculatedSeats > 0) {
+          console.log('✅ [SEATS] Usando cálculo alternativo:', { 
+            maxPassengers, 
+            currentPassengers, 
+            calculatedSeats 
+          });
+          availableSeats = calculatedSeats;
+        }
+      }
+    }
+    
+    // ✅ CORREÇÃO: Garantir que não seja negativo
+    const finalSeats = Math.max(0, availableSeats);
+    
+    console.log('✅ [SEATS] Assentos finais calculados:', finalSeats);
+    return finalSeats;
   };
 
   // ✅ CORREÇÃO: Função tipada para obter tipo de match para exibição
@@ -638,25 +795,55 @@ export default function RideSearchPage() {
     });
   };
 
-  // ✅ CORREÇÃO: Função formatPrice otimizada com formatação monetária consistente
-  const formatPrice = (price?: number | string | null): string => {
-    const num = Number(price) || 0;
-    return num.toLocaleString('pt-MZ', { 
-      style: 'currency', 
-      currency: 'MZN',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
+  // ✅✅✅ CORREÇÃO: Usar formatPrice do serviço API
+  const displayPrice = (price?: number | string | null): string => {
+    return formatPrice(price);
   };
 
+  // ✅✅✅ CORREÇÃO CRÍTICA: Função formatDate completamente corrigida
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-PT', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    try {
+      console.log('📅 [DATE] Formatando data:', dateString);
+      
+      if (!dateString) {
+        return 'Data não disponível';
+      }
+
+      const date = new Date(dateString);
+      
+      if (isNaN(date.getTime())) {
+        console.warn('⚠️ [DATE] Data inválida:', dateString);
+        return 'Data inválida';
+      }
+
+      const formatted = date.toLocaleDateString('pt-PT', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      console.log('✅ [DATE] Data formatada:', dateString, '->', formatted);
+      return formatted;
+    } catch (error) {
+      console.error('❌ [DATE] Erro ao formatar data:', error);
+      return 'Erro na data';
+    }
+  };
+
+  // ✅✅✅ CORREÇÃO CRÍTICA: Função para obter localização formatada
+  const getLocationDisplay = (ride: RideFrontend, type: 'from' | 'to'): string => {
+    const location = type === 'from' ? ride.fromLocation : ride.toLocation;
+    const city = type === 'from' ? ride.fromCity : ride.toCity;
+    
+    // ✅ Se temos localização específica, usar ela
+    if (location && location !== city) {
+      return location;
+    }
+    
+    // ✅ Se não, usar cidade com fallback
+    return city || 'Localização não disponível';
   };
 
   // ✅ CORREÇÃO: Função para validar mudança de passageiros
@@ -830,7 +1017,8 @@ export default function RideSearchPage() {
                           {/* ✅ CABEÇALHO COM INFO DE MATCHING */}
                           <div className="flex items-center justify-between mb-2">
                             <h3 className="font-semibold text-lg">
-                              {ride.fromLocation} → {ride.toLocation}
+                              {/* ✅ CORREÇÃO: Usar função de localização formatada */}
+                              {getLocationDisplay(ride, 'from')} → {getLocationDisplay(ride, 'to')}
                             </h3>
                             {compatibilityScore > 0 && (
                               <Badge className={matchInfo.color}>
@@ -846,7 +1034,9 @@ export default function RideSearchPage() {
                             </p>
                           )}
                           
+                          {/* ✅ CORREÇÃO: Data formatada com tratamento de erro */}
                           <p className="text-gray-600">{formatDate(ride.departureDate)}</p>
+                          
                           <div className="flex items-center gap-2 mt-2">
                             <User className="w-4 h-4" />
                             {/* ✅ USAR NOVA FUNÇÃO PARA NOME */}
@@ -863,7 +1053,14 @@ export default function RideSearchPage() {
                             <span className={`text-sm font-medium ${
                               isFullyBooked ? 'text-red-600' : 'text-green-600'
                             }`}>
-                              {isFullyBooked ? 'LOTADO' : `${availableSeats} lugar(es) disponível(is)`}
+                              {isFullyBooked ? (
+                                <span className="flex items-center">
+                                  <XCircle className="w-4 h-4 mr-1" />
+                                  LOTADO
+                                </span>
+                              ) : (
+                                `${availableSeats} lugar(es) disponível(is)`
+                              )}
                             </span>
                           </div>
                           
@@ -910,27 +1107,26 @@ export default function RideSearchPage() {
                         <div className="flex flex-col items-end gap-2">
                           {/* ✅ USAR PROPRIEDADE price EM VEZ DE pricePerSeat */}
                           <span className="text-2xl font-bold text-green-600">
-                            {formatPrice(ride.price)}
+                            {displayPrice(ride.price)}
                           </span>
                           {ride.pricePerSeat && ride.pricePerSeat !== ride.price && (
                             <span className="text-sm text-gray-500">
-                              {formatPrice(ride.pricePerSeat)}/passageiro
+                              {displayPrice(ride.pricePerSeat)}/passageiro
                             </span>
                           )}
                           <Button 
                             onClick={() => handleBookRide(ride)}
                             // ✅ CORREÇÃO: Simplificar disabled
-                            disabled={getAvailableSeats(ride) < bookingData.passengers || !user}
+                            disabled={isFullyBooked || !user}
                             className={`${
-                              getAvailableSeats(ride) >= bookingData.passengers && user
+                              !isFullyBooked && user
                                 ? 'bg-primary hover:bg-red-600' 
                                 : 'bg-gray-400 cursor-not-allowed'
                             }`}
                           >
                             {!user ? 'Faça login para reservar' : 
-                             getAvailableSeats(ride) === 0 ? 'LOTADO' : 
-                             getAvailableSeats(ride) >= bookingData.passengers ? 'Reservar Agora' : 
-                             'Lugares insuficientes'}
+                             isFullyBooked ? 'LOTADO' : 
+                             'Reservar Agora'}
                           </Button>
                         </div>
                       </div>
@@ -959,9 +1155,9 @@ export default function RideSearchPage() {
                 <div className="flex items-center gap-4 mb-2">
                   <div className="text-sm">
                     {/* ✅ USAR NOVAS PROPRIEDADES */}
-                    <span className="font-semibold">{selectedRide.fromLocation}</span>
+                    <span className="font-semibold">{getLocationDisplay(selectedRide, 'from')}</span>
                     <span className="mx-2">→</span>
-                    <span className="font-semibold">{selectedRide.toLocation}</span>
+                    <span className="font-semibold">{getLocationDisplay(selectedRide, 'to')}</span>
                   </div>
                 </div>
                 <div className="text-sm text-gray-600">
@@ -973,7 +1169,7 @@ export default function RideSearchPage() {
                 </div>
                 {/* ✅ USAR PROPRIEDADE price EM VEZ DE pricePerSeat */}
                 <div className="text-sm font-semibold mt-2">
-                  Preço: {formatPrice(selectedRide.price)}
+                  Preço: {displayPrice(selectedRide.price)}
                 </div>
                 
                 {/* ✅ EXIBIR INFO OF MATCHING NO MODAL */}
@@ -1055,7 +1251,7 @@ export default function RideSearchPage() {
                     <span>Total ({bookingData.passengers} passageiro{bookingData.passengers > 1 ? 's' : ''})</span>
                     {/* ✅ CORREÇÃO: Multiplicação segura de preço */}
                     <span className="text-xl font-bold text-blue-600">
-                      {formatPrice((selectedRide.price || 0) * bookingData.passengers)}
+                      {displayPrice((selectedRide.price || 0) * bookingData.passengers)}
                     </span>
                   </div>
                 </div>

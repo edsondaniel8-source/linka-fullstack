@@ -33,21 +33,21 @@ async function normalizeLocation(locationName: string): Promise<string> {
   try {
     console.log('🔍 [PROVIDER-NORMALIZER] Normalizando:', locationName);
     
-    const result = await db.execute(sql`
+    const result = await db.execute<{ normalized: string }>(sql`
       SELECT normalize_location_name(${locationName}) as normalized
     `);
     
-    // Extrai o resultado de forma segura
+    // ✅ CORREÇÃO: Extração segura com type assertion
     let normalizedValue = locationName.split(',')[0].trim().toLowerCase();
     
-    if (Array.isArray(result)) {
-      normalizedValue = result[0]?.normalized || normalizedValue;
+    if (Array.isArray(result) && typeof result[0]?.normalized === 'string') {
+      normalizedValue = result[0].normalized;
     } else if (result && Array.isArray((result as any).rows)) {
       normalizedValue = (result as any).rows[0]?.normalized || normalizedValue;
     } else if (result && typeof result === 'object') {
       const values = Object.values(result);
-      if (Array.isArray(values[0]) && values[0].length > 0) {
-        normalizedValue = values[0][0]?.normalized || normalizedValue;
+      if (Array.isArray(values[0]) && values[0].length > 0 && typeof values[0][0]?.normalized === 'string') {
+        normalizedValue = values[0][0].normalized;
       }
     }
     
@@ -157,17 +157,20 @@ const getDriverId = (req: AuthenticatedRequest): string | null => {
   return driverId;
 };
 
-// ✅ CORREÇÃO: Função auxiliar para calcular receita de forma segura
+// ✅✅✅ CORREÇÃO: Função auxiliar para calcular receita de forma segura
 const calculateRideRevenue = (ride: any): number => {
+  // ✅ CORREÇÃO APLICADA: Usar safeNumber em todas as variáveis antes da comparação
   const pricePerSeat = safeNumber(ride.pricePerSeat);
-  const bookedSeats = safeNumber((ride as any).bookedSeats);
-  const occupiedSeats = safeNumber((ride as any).occupiedSeats);
-  const maxPassengers = safeNumber(ride.maxPassengers);
+  const bookedSeatsNum = safeNumber((ride as any).bookedSeats);
+  const occupiedSeatsNum = safeNumber((ride as any).occupiedSeats);
+  const maxPassengersNum = safeNumber(ride.maxPassengers);
   
-  // Usar bookedSeats primeiro, depois occupiedSeats, depois maxPassengers como fallback
-  const actualOccupiedSeats = bookedSeats > 0 ? bookedSeats : 
-                             occupiedSeats > 0 ? occupiedSeats : 
-                             maxPassengers;
+  // ✅ CORREÇÃO APLICADA: Comparação segura com números convertidos
+  const actualOccupiedSeats = bookedSeatsNum > 0 
+    ? bookedSeatsNum 
+    : occupiedSeatsNum > 0 
+      ? occupiedSeatsNum 
+      : maxPassengersNum;
   
   return pricePerSeat * actualOccupiedSeats;
 };
@@ -294,7 +297,7 @@ router.get('/smart/search', verifyFirebaseToken, requireDriverRole, async (req: 
       // ✅ NOVAS ESTATÍSTICAS: Dados dos motoristas e veículos
       drivers_with_ratings: matchingRides.filter(r => r.driverRating && r.driverRating > 0).length,
       average_driver_rating: matchingRides.length > 0 
-        ? parseFloat((matchingRides.reduce((sum, ride) => sum + (ride.driverRating || 0), 0) / matchingRides.length).toFixed(1))
+        ? parseFloat((matchingRides.reduce((sum, ride) => sum + (safeNumber(ride.driverRating) || 0), 0) / matchingRides.length).toFixed(1))
         : 0,
       vehicle_types: matchingRides.reduce((acc: any, ride) => {
         const type = ride.vehicleInfo?.type || 'unknown';
@@ -351,9 +354,9 @@ router.get('/smart/search', verifyFirebaseToken, requireDriverRole, async (req: 
         },
         data_completeness: {
           driver_names: matchingRides.filter(r => r.driverName && r.driverName !== 'Motorista').length,
-          driver_ratings: matchingRides.filter(r => r.driverRating && r.driverRating > 0).length,
+          driver_ratings: matchingRides.filter(r => r.driverRating && safeNumber(r.driverRating) > 0).length,
           vehicle_data: matchingRides.filter(r => r.vehicleInfo && r.vehicleInfo.make).length,
-          prices: matchingRides.filter(r => r.pricePerSeat && r.pricePerSeat > 0).length
+          prices: matchingRides.filter(r => r.pricePerSeat && safeNumber(r.pricePerSeat) > 0).length
         },
         smart_search: true
       }
@@ -590,9 +593,9 @@ router.get('/market-analysis', verifyFirebaseToken, requireDriverRole, async (re
         },
         data_completeness: {
           driver_names: marketRides.filter(r => r.driverName && r.driverName !== 'Motorista').length,
-          driver_ratings: marketRides.filter(r => r.driverRating && r.driverRating > 0).length,
+          driver_ratings: marketRides.filter(r => r.driverRating && safeNumber(r.driverRating) > 0).length,
           vehicle_data: marketRides.filter(r => r.vehicleInfo && r.vehicleInfo.make).length,
-          prices: marketRides.filter(r => r.pricePerSeat && r.pricePerSeat > 0).length
+          prices: marketRides.filter(r => r.pricePerSeat && safeNumber(r.pricePerSeat) > 0).length
         },
         smart_analysis: true
       }
@@ -765,8 +768,9 @@ router.get('/', verifyFirebaseToken, requireDriverRole, async (req: Authenticate
 
     const driverRides = await rideService.getRidesByDriver(driverId, status);
     
-    const pageNum = Math.max(page, 1);
-    const limitNum = Math.min(Math.max(limit, 1), 100);
+    // ✅ CORREÇÃO APLICADA: Usar safeNumber para garantir que são números
+    const pageNum = Math.max(safeNumber(page), 1);
+    const limitNum = Math.min(Math.max(safeNumber(limit), 1), 100);
     const startIndex = (pageNum - 1) * limitNum;
     const endIndex = startIndex + limitNum;
     const paginatedRides = driverRides.slice(startIndex, endIndex);
@@ -803,9 +807,9 @@ router.get('/', verifyFirebaseToken, requireDriverRole, async (req: Authenticate
         },
         data_completeness: {
           driver_names: paginatedRides.filter(r => r.driverName && r.driverName !== 'Motorista').length,
-          driver_ratings: paginatedRides.filter(r => r.driverRating && r.driverRating > 0).length,
+          driver_ratings: paginatedRides.filter(r => r.driverRating && safeNumber(r.driverRating) > 0).length,
           vehicle_data: paginatedRides.filter(r => r.vehicleInfo && r.vehicleInfo.make).length,
-          prices: paginatedRides.filter(r => r.pricePerSeat && r.pricePerSeat > 0).length
+          prices: paginatedRides.filter(r => r.pricePerSeat && safeNumber(r.pricePerSeat) > 0).length
         }
       }
     });
@@ -1204,9 +1208,9 @@ router.get('/:id', verifyFirebaseToken, requireDriverRole, async (req: Authentic
         ride,
         data_completeness: {
           has_driver_name: !!ride.driverName && ride.driverName !== 'Motorista',
-          has_driver_rating: !!ride.driverRating && ride.driverRating > 0,
+          has_driver_rating: !!ride.driverRating && safeNumber(ride.driverRating) > 0,
           has_vehicle_data: !!ride.vehicleInfo && !!ride.vehicleInfo.make,
-          has_price: !!ride.pricePerSeat && ride.pricePerSeat > 0
+          has_price: !!ride.pricePerSeat && safeNumber(ride.pricePerSeat) > 0
         }
       }
     });

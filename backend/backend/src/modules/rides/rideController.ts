@@ -90,6 +90,25 @@ async function normalizeLocation(locationName: string): Promise<string> {
   }
 }
 
+// ✅ Função auxiliar para parsing de localização
+function parseLocationInput(location: string): { city: string; lat?: number; lng?: number } {
+  try {
+    // Tenta extrair coordenadas se presentes
+    const coordMatch = location.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (coordMatch) {
+      const lat = parseFloat(coordMatch[1]);
+      const lng = parseFloat(coordMatch[2]);
+      const city = location.split('@')[0].trim();
+      return { city, lat, lng };
+    }
+    
+    // Fallback: retorna apenas o texto da cidade
+    return { city: location };
+  } catch (error) {
+    return { city: location };
+  }
+}
+
 // ✅ Schema para atualização
 const updateRideSchema = insertRideSchema.partial().extend({
   pricePerSeat: z.string().optional(),
@@ -160,10 +179,10 @@ router.get("/search/universal", async (req: Request, res: Response) => {
     // ✅ CORREÇÃO: Estatísticas atualizadas com novos dados
     const stats = {
       total: universalRides.length,
-      smart_matches: universalRides.filter(r => r.match_type === 'smart_match' || r.match_type === 'smart_final_direct').length,
-      exact_matches: universalRides.filter(r => r.match_type === 'exact_match').length,
-      nearby_matches: universalRides.filter(r => r.match_type === 'nearby').length,
-      traditional_matches: universalRides.filter(r => !r.match_type || r.match_type === 'traditional').length,
+      smart_matches: universalRides.filter(r => r.matchType === 'smart_match' || r.matchType === 'smart_final_direct').length,
+      exact_matches: universalRides.filter(r => r.matchType === 'exact_match').length,
+      nearby_matches: universalRides.filter(r => r.matchType === 'nearby').length,
+      traditional_matches: universalRides.filter(r => !r.matchType || r.matchType === 'traditional').length,
       average_compatibility: universalRides.length > 0 
         ? Math.round(universalRides.reduce((sum, ride) => sum + (ride.route_compatibility || 0), 0) / universalRides.length)
         : 0,
@@ -173,7 +192,7 @@ router.get("/search/universal", async (req: Request, res: Response) => {
         ? parseFloat((universalRides.reduce((sum, ride) => sum + (ride.driverRating || 0), 0) / universalRides.length).toFixed(1))
         : 0,
       vehicle_types: universalRides.reduce((acc: any, ride) => {
-        const type = ride.vehicleInfo?.type || 'unknown';
+        const type = ride.vehicleType || 'unknown';
         acc[type] = (acc[type] || 0) + 1;
         return acc;
       }, {})
@@ -235,24 +254,19 @@ router.get("/search/universal", async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/rides/smart/search - Busca inteligente pública ATUALIZADA COM DADOS COMPLETOS
+// ✅✅✅ PATCH 2 APLICADO: ROTA /smart/search CORRIGIDA
+// GET /api/rides/smart/search - Busca inteligente pública COM RESPOSTA CONSISTENTE
 router.get("/smart/search", async (req: Request, res: Response) => {
   try {
-    const { 
-      from, 
+    const {
+      from,
       to,
-      lat,
-      lng,
-      toLat,
-      toLng,
       date,
-      passengers = '1',
-      maxResults = '20',
-      radiusKm = '100',
-      fromId,
-      toId
+      passengers = 1,
+      radiusKm = 100
     } = req.query;
 
+    // ✅ VALIDAÇÃO DOS PARÂMETROS OBRIGATÓRIOS
     if (typeof from !== 'string' || typeof to !== 'string' || !from.trim() || !to.trim()) {
       return res.status(400).json({
         success: false,
@@ -260,257 +274,70 @@ router.get("/smart/search", async (req: Request, res: Response) => {
       });
     }
 
-    // ✅ CORREÇÃO: Usar normalizador assíncrono
-    const normalizedFrom = await normalizeLocation(from);
-    const normalizedTo = await normalizeLocation(to);
-    const validatedMaxResults = validateMaxResults(maxResults, 20, 50);
-    const passengersNum = Math.max(Number(passengers) || 1, 1);
-    const radius = parseFloat(radiusKm as string);
+    // ✅ PARSING DAS LOCALIZAÇÕES
+    const parsedFrom = parseLocationInput(from);
+    const parsedTo = parseLocationInput(to);
 
-    // 🔍 DEBUG DETALHADO - FLUXO COMPLETO
-    console.log('🎯 [NORMALIZAÇÃO-CORRIGIDA-CONTROLLER]', {
-      original: { from: from, to: to },
-      normalized: { from: normalizedFrom, to: normalizedTo },
-      radius: radius
+    console.log("🎯 Buscando rides com parâmetros:", {
+      fromCity: parsedFrom.city,
+      toCity: parsedTo.city,
+      fromLat: parsedFrom.lat,
+      fromLng: parsedFrom.lng,
+      toLat: parsedTo.lat,
+      toLng: parsedTo.lng,
+      date,
+      passengers,
+      radiusKm
     });
 
-    console.log('🧠 [SMART-CONTROLLER] Busca inteligente solicitada:', {
-      from: normalizedFrom,
-      to: normalizedTo,
-      radius,
-      passengers: passengersNum
+    // ✅ USAR A FUNÇÃO NORMALIZADA DO SERVICE ATUALIZADO
+    const matchingRides = await rideService.searchRidesSmartFinal({
+      fromCity: parsedFrom.city,
+      toCity: parsedTo.city,
+      fromLat: parsedFrom.lat,
+      fromLng: parsedFrom.lng,
+      toLat: parsedTo.lat,
+      toLng: parsedTo.lng,
+      date: date as string,
+      passengers: Number(passengers),
+      radiusKm: Number(radiusKm)
     });
 
-    // ✅ CORREÇÃO: Usar busca SMART FINAL diretamente
-    let matchingRides: any[] = [];
-    let searchMethod = 'smart_final';
-
-    try {
-      // ✅ CORREÇÃO CRÍTICA: Usar o novo método searchRidesSmartFinal
-      matchingRides = await rideService.searchRidesSmartFinal(
-        normalizedFrom,
-        normalizedTo,
-        radius
-      );
-      searchMethod = 'smart_final_direct';
-      
-      // 🎯 DEBUG: TESTAR DIRETAMENTE NO BANCO
-      console.log('🎯 [DEBUG] Resultado direto do PostgreSQL:', {
-        normalizedFrom,
-        normalizedTo, 
-        resultsCount: matchingRides.length,
-        sampleRides: matchingRides.slice(0, 3).map(ride => ({
-          id: ride.id,
-          driverName: ride.driverName,
-          driverRating: ride.driverRating,
-          vehicle: ride.vehicleInfo ? `${ride.vehicleInfo.make} ${ride.vehicleInfo.model}` : 'N/A',
-          price: ride.pricePerSeat,
-          match_type: ride.match_type
-        }))
-      });
-      
-    } catch (smartError) {
-      console.warn("❌ Smart final falhou, usando universal como fallback:", smartError);
-      matchingRides = await rideService.getRidesUniversal({
-        fromLocation: normalizedFrom,
-        toLocation: normalizedTo,
-        radiusKm: radius,
-        maxResults: validatedMaxResults
-      });
-      searchMethod = 'universal_fallback';
-    }
-
-    // ✅ CORREÇÃO CRÍTICA: SALVAR TODOS OS RESULTADOS ANTES DE QUALQUER FILTRO
-    const allRidesBeforeFilter = [...matchingRides];
-    console.log('🔍 [CONTROLLER-FILTER-DEBUG] Antes de filtrar:', {
-      totalRides: allRidesBeforeFilter.length,
-      rideIds: allRidesBeforeFilter.map(r => r.id),
-      sampleData: allRidesBeforeFilter.slice(0, 2).map(r => ({
-        id: r.id,
-        driverName: r.driverName,
-        vehicle: r.vehicleInfo,
-        price: r.pricePerSeat
-      }))
-    });
-
-    // ✅ Filtrar por data se fornecida
-    if (date && typeof date === 'string') {
-      const searchDate = new Date(date);
-      matchingRides = matchingRides.filter(ride => {
-        if (!ride.departureDate) return false;
-        const rideDate = new Date(ride.departureDate);
-        return rideDate.toDateString() === searchDate.toDateString();
-      });
-    }
-
-    // ✅ Filtrar por número de passageiros
-    matchingRides = matchingRides.filter(ride => 
-      ride.availableSeats >= passengersNum
-    );
-
-    // ✅ CORREÇÃO CRÍTICA: DEBUG APÓS FILTROS
-    console.log('🔍 [CONTROLLER-FILTER-DEBUG] Após filtros:', {
-      filtroData: date || 'não aplicado',
-      filtroPassageiros: passengersNum,
-      antesFiltros: allRidesBeforeFilter.length,
-      depoisFiltros: matchingRides.length,
-      ridesRemovidos: allRidesBeforeFilter.length - matchingRides.length
-    });
-
-    // ✅ Aplicar limite de resultados
-    const finalRides = matchingRides.slice(0, validatedMaxResults);
-
-    // ✅✅✅ CORREÇÃO CRÍTICA: VERIFICAÇÃO FINAL ANTES DO ENVIO
-    console.log('🔍 [CONTROLLER-FINAL-CHECK] Verificação final antes do envio:', {
-      resultadosDoServico: allRidesBeforeFilter.length,
-      resultadosParaFrontend: finalRides.length,
-      todosOsIds: finalRides.map(r => r.id),
-      dadosCompletos: finalRides.map(r => ({
-        id: r.id,
-        driverName: r.driverName,
-        driverRating: r.driverRating,
-        vehicle: r.vehicleInfo,
-        price: r.pricePerSeat,
-        seats: r.availableSeats
-      })),
-      filtrosAplicados: {
-        data: !!date,
-        passageiros: passengersNum,
-        maxResults: validatedMaxResults
-      }
-    });
-
-    // ✅✅✅ CORREÇÃO: ESTATÍSTICAS ATUALIZADAS COM NOVOS DADOS
-    const matchStats = {
-      smart_matches: finalRides.filter(r => r.match_type === 'smart_final_direct' || r.match_type === 'smart_match').length,
-      exact_match: finalRides.filter(r => r.match_type === 'exact_match' || r.matchType === 'exact_match').length,
-      same_segment: finalRides.filter(r => 
-        r.match_type === 'covers_route' || r.matchType === 'covers_route' || 
-        r.match_type === 'same_segment' || r.matchType === 'same_segment'
-      ).length,
-      same_direction: finalRides.filter(r => 
-        r.match_type === 'first_leg' || r.matchType === 'first_leg' ||
-        r.match_type === 'corridor_route' || r.matchType === 'corridor_route'
-      ).length,
-      potential: finalRides.filter(r => 
-        r.match_type === 'same_direction_overlap' || r.matchType === 'same_direction_overlap' ||
-        r.match_type === 'same_region' || r.matchType === 'same_region'
-      ).length,
-      traditional: finalRides.filter(r => 
-        !r.match_type && !r.matchType || 
-        r.match_type === 'traditional' || r.matchType === 'traditional'
-      ).length,
-      total: finalRides.length,
-      // ✅ NOVAS ESTATÍSTICAS: Dados dos motoristas e veículos
-      drivers_with_ratings: finalRides.filter(r => r.driverRating && r.driverRating > 0).length,
-      average_driver_rating: finalRides.length > 0 
-        ? parseFloat((finalRides.reduce((sum, ride) => sum + (ride.driverRating || 0), 0) / finalRides.length).toFixed(1))
-        : 0,
-      vehicle_types: finalRides.reduce((acc: any, ride) => {
-        const type = ride.vehicleInfo?.type || 'unknown';
-        acc[type] = (acc[type] || 0) + 1;
-        return acc;
-      }, {})
-    };
-
-    console.log('✅ [SMART-CONTROLLER] Resultados da busca inteligente:', {
-      total: finalRides.length,
-      method: searchMethod,
-      stats: matchStats,
-      // 🔍 DEBUG ADICIONAL: Mostrar primeiros resultados com dados completos
-      firstResults: finalRides.slice(0, 5).map(ride => ({
-        driverName: ride.driverName,
-        driverRating: ride.driverRating,
-        vehicle: ride.vehicleInfo ? `${ride.vehicleInfo.make} ${ride.vehicleInfo.model}` : 'N/A',
-        vehicleType: ride.vehicleInfo?.typeDisplay || 'N/A',
+    console.log("✅ Resultados normalizados para frontend:", {
+      total: matchingRides.length,
+      resultados: matchingRides.map(ride => ({
+        id: ride.id,
         fromCity: ride.fromCity,
         toCity: ride.toCity,
-        price: ride.pricePerSeat,
-        match_type: ride.match_type,
-        compatibility: ride.route_compatibility
+        departureDate: ride.departureDate,
+        pricePerSeat: ride.pricePerSeat,
+        availableSeats: ride.availableSeats
       }))
     });
 
+    // ✅ ENVIAR RESPOSTA PADRONIZADA
     res.json({
       success: true,
-      data: {
-        rides: finalRides,
-        stats: matchStats,
+      total: matchingRides.length,
+      results: matchingRides,
+      metadata: {
         searchParams: {
-          from: normalizedFrom,
-          to: normalizedTo,
-          date: date || 'qualquer',
-          passengers: passengersNum,
-          maxResults: validatedMaxResults,
-          radiusKm: radius,
-          searchMethod
+          from: parsedFrom.city,
+          to: parsedTo.city,
+          date,
+          passengers
         },
-        debug_info: {
-          normalization_applied: from !== normalizedFrom || to !== normalizedTo,
-          original_input: { from, to },
-          normalized_input: { from: normalizedFrom, to: normalizedTo },
-          filters_applied: {
-            date: !!date,
-            passengers: passengersNum,
-            maxResults: validatedMaxResults
-          },
-          total_before_filters: allRidesBeforeFilter.length,
-          total_after_filters: finalRides.length,
-          data_completeness: {
-            driver_names: finalRides.filter(r => r.driverName && r.driverName !== 'Motorista').length,
-            driver_ratings: finalRides.filter(r => r.driverRating && r.driverRating > 0).length,
-            vehicle_data: finalRides.filter(r => r.vehicleInfo && r.vehicleInfo.make).length,
-            prices: finalRides.filter(r => r.pricePerSeat && r.pricePerSeat > 0).length
-          }
-        },
-        smart_search: true
+        timestamp: new Date().toISOString()
       }
     });
-  } catch (error) {
-    console.error("❌ Erro em busca inteligente:", error);
-    
-    // 🔍 DEBUG DO ERRO
-    console.error('🔍 [DEBUG-ERROR] Detalhes do erro:', {
-      errorMessage: error instanceof Error ? error.message : 'Erro desconhecido',
-      errorStack: error instanceof Error ? error.stack : undefined,
-      queryParams: req.query
-    });
-    
-    try {
-      const { from, to, maxResults = '20' } = req.query;
-      
-      const traditionalRides = await rideService.getRides({
-        fromLocation: from as string,
-        toLocation: to as string,
-        status: 'available'
-      }).then(rides => rides.slice(0, validateMaxResults(maxResults, 20, 50)));
 
-      res.json({
-        success: true,
-        data: {
-          rides: traditionalRides,
-          stats: {
-            exact_match: 0,
-            same_segment: 0,
-            same_direction: 0,
-            potential: 0,
-            traditional: traditionalRides.length,
-            total: traditionalRides.length
-          },
-          searchParams: {
-            from: from as string,
-            to: to as string,
-            maxResults: validateMaxResults(maxResults, 20, 50)
-          },
-          warning: "Sistema inteligente temporariamente indisponível, usando busca tradicional"
-        }
-      });
-    } catch (fallbackError) {
-      res.status(500).json({
-        success: false,
-        message: "Erro interno do servidor no sistema de busca"
-      });
-    }
+  } catch (error) {
+    console.error("❌ Erro no /smart/search:", error);
+    res.status(500).json({
+      success: false,
+      error: "Erro interno do servidor",
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
   }
 });
 
@@ -550,7 +377,7 @@ router.get("/between-cities", async (req: Request, res: Response) => {
         ? parseFloat((rides.reduce((sum, ride) => sum + (ride.driverRating || 0), 0) / rides.length).toFixed(1))
         : 0,
       vehicle_types: rides.reduce((acc: any, ride) => {
-        const type = ride.vehicleInfo?.type || 'unknown';
+        const type = ride.vehicleType || 'unknown';
         acc[type] = (acc[type] || 0) + 1;
         return acc;
       }, {})
@@ -623,7 +450,7 @@ router.get("/nearby", async (req: Request, res: Response) => {
         ? parseFloat((nearbyRides.reduce((sum, ride) => sum + (ride.driverRating || 0), 0) / nearbyRides.length).toFixed(1))
         : 0,
       vehicle_types: nearbyRides.reduce((acc: any, ride) => {
-        const type = ride.vehicleInfo?.type || 'unknown';
+        const type = ride.vehicleType || 'unknown';
         acc[type] = (acc[type] || 0) + 1;
         return acc;
       }, {})
@@ -689,11 +516,11 @@ router.get("/hybrid/search", async (req: Request, res: Response) => {
     let allRides: any[] = [];
 
     try {
-      allRides = await rideService.searchRidesSmartFinal(
-        normalizedFrom,
-        normalizedTo,
-        radius
-      );
+      allRides = await rideService.searchRidesSmartFinal({
+        fromCity: normalizedFrom,
+        toCity: normalizedTo,
+        radiusKm: radius
+      });
     } catch (smartError) {
       console.warn("❌ Smart final falhou, usando universal como fallback:", smartError);
       allRides = await rideService.getRidesUniversal({
@@ -725,7 +552,7 @@ router.get("/hybrid/search", async (req: Request, res: Response) => {
             sum + (ride.driverRating || 0), 0) / filteredRides.length).toFixed(1))
         : 0,
       vehicle_types: filteredRides.reduce((acc: any, ride: any) => {
-        const type = ride.vehicleInfo?.type || 'unknown';
+        const type = ride.vehicleType || 'unknown';
         acc[type] = (acc[type] || 0) + 1;
         return acc;
       }, {})
@@ -855,7 +682,7 @@ router.get("/province/search", async (req: Request, res: Response) => {
         ? parseFloat((allMatches.reduce((sum, ride) => sum + (ride.driverRating || 0), 0) / allMatches.length).toFixed(1))
         : 0,
       vehicle_types: allMatches.reduce((acc: any, ride) => {
-        const type = ride.vehicleInfo?.type || 'unknown';
+        const type = ride.vehicleType || 'unknown';
         acc[type] = (acc[type] || 0) + 1;
         return acc;
       }, {})
@@ -943,7 +770,7 @@ router.get("/", async (req: Request, res: Response) => {
     if (vehicleType) {
       const normalizedVehicleType = normalizeString(vehicleType as string);
       filteredRides = filteredRides.filter(ride => 
-        ride.vehicleInfo && normalizeString(ride.vehicleInfo.type) === normalizedVehicleType
+        ride.vehicleType && normalizeString(ride.vehicleType) === normalizedVehicleType
       );
     }
     
@@ -965,7 +792,7 @@ router.get("/", async (req: Request, res: Response) => {
         ? parseFloat((filteredRides.reduce((sum, ride) => sum + (ride.driverRating || 0), 0) / filteredRides.length).toFixed(1))
         : 0,
       vehicle_types: filteredRides.reduce((acc: any, ride) => {
-        const type = ride.vehicleInfo?.type || 'unknown';
+        const type = ride.vehicleType || 'unknown';
         acc[type] = (acc[type] || 0) + 1;
         return acc;
       }, {})

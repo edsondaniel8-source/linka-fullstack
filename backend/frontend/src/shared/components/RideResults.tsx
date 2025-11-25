@@ -13,29 +13,52 @@ import EnRoutePickupModal from "./EnRoutePickupModal";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/shared/components/ui/dialog";
-import { formatPriceStringAsMzn } from "@/shared/lib/currency";
 import { useToast } from "@/shared/hooks/use-toast";
 
-// ✅✅✅ INTERFACE RIDE COMPLETAMENTE CORRIGIDA COM NOVOS DADOS DO POSTGRESQL
+// ✅ Importar a função normalizeRide do serviço API
+import { normalizeRide, formatPrice } from "@/services/api";
+
+// ✅✅✅ INTERFACE RIDE COMPLETAMENTE CORRIGIDA - SEM DUPLICAÇÕES
 interface Ride {
   id: string;
   driverId: string;
+  
+  // ✅✅✅ CORREÇÃO: Campos CRÍTICOS (sem duplicações)
+  driverName: string;
+  driverRating: number;
+  fromCity: string;
+  toCity: string;
+  
+  // Campos de localização
   fromLocation: string;
   toLocation: string;
+  fromAddress: string;
+  toAddress: string;
+  fromProvince?: string;
+  toProvince?: string;
+  
+  // Data e hora
   departureDate: string;
   departureTime: string;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'expired' | 'active' | 'available';
+  
+  // Preços e capacidade
   price: number;
   pricePerSeat: number;
+  availableSeats: number;
   maxPassengers: number;
   currentPassengers: number;
+  
+  // Veículo
+  vehicle: string;
+  vehicleType: string;
+  
+  // Status
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'expired' | 'active' | 'available';
+  
+  // Tipo
   type: string;
   
-  // ✅✅✅ NOVOS CAMPOS: Dados do motorista
-  driverName?: string;
-  driverRating?: number;
-  
-  // ✅✅✅ NOVOS CAMPOS: Dados completos do veículo
+  // ✅✅✅ Dados completos do veículo
   vehicleInfo?: {
     make: string;
     model: string;
@@ -47,14 +70,15 @@ interface Ride {
     maxPassengers: number;
   };
   
+  // Campos opcionais
   description?: string;
   vehiclePhoto?: string;
-  availableSeats?: number;
   estimatedDuration?: number;
   estimatedDistance?: number;
   allowNegotiation?: boolean;
   allowPickupEnRoute?: boolean;
   isVerifiedDriver?: boolean;
+  availableIn?: number;
   
   // Campos de matching
   match_type?: string;
@@ -62,6 +86,7 @@ interface Ride {
   match_description?: string;
   vehicleFeatures?: string[];
   
+  // Driver info
   driver?: {
     firstName?: string;
     lastName?: string;
@@ -69,13 +94,7 @@ interface Ride {
     isVerified?: boolean;
   };
   
-  // Campos adicionais para compatibilidade
-  fromProvince?: string;
-  toProvince?: string;
-  vehicleType?: string;
-  availableIn?: number;
-  
-  // ✅✅✅ NOVOS CAMPOS: Dados de localização geográfica
+  // ✅✅✅ Dados de localização geográfica
   from_lat?: number;
   from_lng?: number;
   to_lat?: number;
@@ -94,6 +113,31 @@ interface RideResultsProps {
   rides?: Ride[];
   onRideSelect?: (ride: Ride) => void;
 }
+
+// ✅✅✅ FUNÇÕES HELPER SIMPLIFICADAS - CORRIGIDAS
+const getDisplayLocation = (ride: any, type: 'from' | 'to') => {
+  const location = type === 'from' ? ride.fromCity : ride.toCity;
+  return location && location !== 'Cidade não disponível' ? location : 'Localização não disponível';
+};
+
+const getDisplayDate = (ride: any) => {
+  return ride.departureDateFormatted && ride.departureDateFormatted !== 'Data não disponível' 
+    ? ride.departureDateFormatted 
+    : 'Data não disponível';
+};
+
+const getDisplayPrice = (ride: any) => {
+  if (ride.pricePerSeat === null || ride.pricePerSeat === undefined) {
+    return 'Preço não disponível';
+  }
+  
+  // Formatar como MZN
+  return new Intl.NumberFormat('pt-MZ', {
+    style: 'currency',
+    currency: 'MZN',
+    minimumFractionDigits: 2
+  }).format(ride.pricePerSeat);
+};
 
 // 🎯 COMPONENTE DE DEBUG - MELHORADO PARA VERIFICAR OS DADOS
 const DebugComponent = ({ rides }: { rides: any[] }) => {
@@ -245,31 +289,118 @@ const formatDateTime = (ride: Ride) => {
   }
 };
 
-// 🆕 Função para formatar preço - COMPLETAMENTE CORRIGIDA
-const formatPrice = (price: number | string | undefined): string => {
-  if (price === undefined || price === null) {
-    return '0,00 MTn';
-  }
+// ✅✅✅ COMPONENTE RIDECARD CORRIGIDO - COM FUNÇÕES HELPER SIMPLIFICADAS
+const RideCard = ({ ride, onBookRide, onNegotiatePrice, onEnRoutePickup }: { 
+  ride: Ride; 
+  onBookRide: (ride: Ride) => void;
+  onNegotiatePrice: (ride: Ride) => void;
+  onEnRoutePickup: (ride: Ride) => void;
+}) => {
+  const normalizedRide = normalizeRide(ride);
   
-  // ✅✅✅ CORREÇÃO CRÍTICA: Converter para número considerando TODAS as possíveis fontes
-  let priceNum: number;
-  
-  if (typeof price === 'string') {
-    // Remove qualquer caractere não numérico exceto ponto e vírgula
-    const cleaned = price.replace(/[^\d,.]/g, '');
-    // Substitui vírgula por ponto para parseFloat
-    priceNum = parseFloat(cleaned.replace(',', '.'));
-  } else {
-    priceNum = price;
-  }
-  
-  // Se ainda não for número válido, retorna 0
-  if (isNaN(priceNum)) {
-    console.warn('⚠️ [PRICE] Preço inválido:', price);
-    return '0,00 MTn';
-  }
-  
-  return formatPriceStringAsMzn(priceNum.toString());
+  return (
+    <div className="ride-card" style={{ 
+      border: '1px solid #e0e0e0', 
+      padding: '16px', 
+      margin: '12px 0', 
+      borderRadius: '12px',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      backgroundColor: 'white'
+    }}>
+      {/* Localização */}
+      <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '12px', color: '#333' }}>
+        🚩 {getDisplayLocation(normalizedRide, 'from')} 
+        <span style={{ margin: '0 8px', color: '#666' }}>→</span>
+        🎯 {getDisplayLocation(normalizedRide, 'to')}
+      </div>
+      
+      {/* Data e Hora */}
+      <div style={{ marginBottom: '8px', color: '#666', fontSize: '14px' }}>
+        <span style={{ marginRight: '12px' }}>📅 {getDisplayDate(normalizedRide)}</span>
+        {normalizedRide.departureTime && normalizedRide.departureTime !== 'Hora não disponível' && (
+          <span>⏰ {normalizedRide.departureTime}</span>
+        )}
+      </div>
+      
+      {/* Preço e Lugares */}
+      <div style={{ marginBottom: '8px', fontSize: '16px', fontWeight: 'bold', color: '#2c5aa0' }}>
+        💰 {getDisplayPrice(normalizedRide)}
+        {normalizedRide.availableSeats > 0 && (
+          <span style={{ marginLeft: '12px', fontSize: '14px', color: '#666', fontWeight: 'normal' }}>
+            • 🪑 {normalizedRide.availableSeats} {normalizedRide.availableSeats === 1 ? 'lugar' : 'lugares'}
+          </span>
+        )}
+      </div>
+      
+      {/* Motorista e Veículo */}
+      <div style={{ color: '#333', fontSize: '14px' }}>
+        <span>👤 {normalizedRide.driverName}</span>
+        {normalizedRide.driverRating && (
+          <span style={{ marginLeft: '8px' }}>⭐ {normalizedRide.driverRating.toFixed(1)}</span>
+        )}
+        {normalizedRide.vehicle && (
+          <span style={{ marginLeft: '8px' }}>• 🚗 {normalizedRide.vehicle}</span>
+        )}
+      </div>
+
+      {/* Botões de Ação */}
+      <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+        <button 
+          onClick={() => onBookRide(ride)}
+          style={{
+            flex: 1,
+            backgroundColor: '#dc2626',
+            color: 'white',
+            border: 'none',
+            padding: '8px 16px',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+          disabled={!normalizedRide.availableSeats || normalizedRide.availableSeats <= 0}
+        >
+          📅 {(!normalizedRide.availableSeats || normalizedRide.availableSeats <= 0) ? 'Lotado' : 'Reservar Agora'}
+        </button>
+        
+        {ride.allowNegotiation && (
+          <button 
+            onClick={() => onNegotiatePrice(ride)}
+            style={{
+              flex: 1,
+              backgroundColor: 'transparent',
+              color: '#374151',
+              border: '1px solid #d1d5db',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            🤝 Negociar
+          </button>
+        )}
+      </div>
+
+      {ride.allowPickupEnRoute && (
+        <button 
+          onClick={() => onEnRoutePickup(ride)}
+          style={{
+            width: '100%',
+            backgroundColor: 'transparent',
+            color: '#374151',
+            border: '1px solid #d1d5db',
+            padding: '8px 16px',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            marginTop: '8px'
+          }}
+        >
+          📍 Pickup em Rota
+        </button>
+      )}
+    </div>
+  );
 };
 
 // ✅ Interface para resposta da API
@@ -376,16 +507,21 @@ export default function RideResults({
           id: ride.id?.toString() || ride.ride_id?.toString() || Math.random().toString(),
           driverId: ride.driverId || ride.driver_id,
           
-          // ✅✅✅ NOVOS CAMPOS: Dados do motorista do PostgreSQL
+          // ✅✅✅ CORREÇÃO: Campos CRÍTICOS adicionados (SEM DUPLICAÇÕES)
           driverName: ride.driver_name || ride.driverName || 'Motorista',
           driverRating: driverRatingNum,
+          fromCity: ride.fromCity || ride.from_city || ride.fromLocation || ride.from_address || 'Partida',
+          toCity: ride.toCity || ride.to_city || ride.toLocation || ride.to_address || 'Destino',
+          fromLocation: ride.fromLocation || ride.from_address || ride.from_city || '',
+          toLocation: ride.toLocation || ride.to_address || ride.to_city || '',
+          fromAddress: ride.fromAddress || ride.from_address || ride.fromLocation || '',
+          toAddress: ride.toAddress || ride.to_address || ride.toLocation || '',
+          fromProvince: ride.fromProvince || ride.from_province,
+          toProvince: ride.toProvince || ride.to_province,
+          vehicle: ride.vehicle || ride.vehicleInfo || '',
           
           // ✅✅✅ NOVOS CAMPOS: Dados completos do veículo do PostgreSQL
           vehicleInfo: vehicleInfo,
-          
-          // ✅✅✅ CORREÇÃO: Usar apenas fromLocation e toLocation
-          fromLocation: ride.fromLocation || ride.from_city || ride.fromAddress || 'Origem',
-          toLocation: ride.toLocation || ride.to_city || ride.toAddress || 'Destino',
           
           // Data e hora - ✅✅✅ CORREÇÃO APLICADA
           departureDate: departureDate || new Date().toISOString(),
@@ -593,157 +729,15 @@ export default function RideResults({
               <p className="text-gray-500">Nenhuma viagem encontrada</p>
             </div>
           ) : (
-            ridesToShow.map((ride) => {
-              const vehicleInfo = getVehicleInfo(ride);
-              const { formattedDate, formattedTime } = formatDateTime(ride);
-              const driverName = getDriverName(ride);
-              const driverRating = getDriverRating(ride);
-              
-              console.log('🎯 [RENDER] Renderizando ride:', {
-                id: ride.id,
-                driverName,
-                driverRating,
-                price: ride.price,
-                pricePerSeat: ride.pricePerSeat,
-                formattedPrice: formatPrice(ride.pricePerSeat || ride.price),
-                vehicleInfo,
-                fromLocation: ride.fromLocation,
-                toLocation: ride.toLocation,
-                distanceFromCityKm: ride.distanceFromCityKm,
-                distanceToCityKm: ride.distanceToCityKm
-              });
-              
-              return (
-                <div
-                  key={ride.id}
-                  className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow"
-                >
-                  <div className="space-y-3">
-                    {/* Badge de Compatibilidade */}
-                    {getMatchBadge(ride)}
-                    
-                    {/* Cabeçalho */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
-                          <span className="text-gray-600">{vehicleInfo.typeIcon}</span>
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-gray-900 capitalize">{vehicleInfo.typeDisplay}</h4>
-                          <p className="text-sm text-gray-500">
-                            {ride.fromLocation} → {ride.toLocation}
-                          </p>
-                          
-                          {/* ✅✅✅ CORREÇÃO: Informações da Localização */}
-                          <div className="text-xs text-gray-600 mt-1">
-                            <span>Saindo de: {ride.fromLocation}</span>
-                            <span className="ml-2">Para: {ride.toLocation}</span>
-                          </div>
-                          
-                          {/* ✅✅✅ CORREÇÃO: Informações do Motorista */}
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-gray-500 font-medium">
-                              {driverName}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <span className="text-yellow-500 text-xs">⭐</span>
-                              <span className="text-xs font-medium">
-                                {driverRating.toFixed(1)}
-                              </span>
-                            </div>
-                            {(ride.driver?.isVerified || ride.isVerifiedDriver) && (
-                              <Badge className="bg-green-100 text-green-800 text-xs border-0">
-                                Verificado
-                              </Badge>
-                            )}
-                          </div>
-                          
-                          {/* ✅✅✅ CORREÇÃO: Informações do Veículo */}
-                          <div className="mt-1 text-xs text-gray-600">
-                            <span className="font-medium">{vehicleInfo.display}</span>
-                            {vehicleInfo.color && vehicleInfo.color !== 'Não informada' && (
-                              <span className="ml-1">- {vehicleInfo.color}</span>
-                            )}
-                            {vehicleInfo.plate !== 'Não informada' && (
-                              <span className="ml-2 text-gray-500">({vehicleInfo.plate})</span>
-                            )}
-                          </div>
-                          
-                          {/* Informações adicionais */}
-                          <div className="flex flex-wrap gap-2 mt-2 text-xs text-gray-500">
-                            <span>🕐 {formattedTime}</span>
-                            <span>📅 {formattedDate}</span>
-                            {ride.availableSeats && ride.availableSeats > 0 && (
-                              <span>💺 {ride.availableSeats} assento(s)</span>
-                            )}
-                            {ride.estimatedDuration && (
-                              <span>⏱️ {ride.estimatedDuration} min</span>
-                            )}
-                            {ride.estimatedDistance && (
-                              <span>📏 {ride.estimatedDistance} km</span>
-                            )}
-                            {/* ✅✅✅ CORREÇÃO: Distância da cidade - usando campos novos */}
-                            {ride.distanceFromCityKm !== undefined && (
-                              <span>📍 {ride.distanceFromCityKm.toFixed(1)} km</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-gray-900 text-lg">
-                          {/* ✅✅✅ CORREÇÃO CRÍTICA: Usar a função formatPrice corrigida */}
-                          {formatPrice(ride.pricePerSeat || ride.price)}
-                        </p>
-                        <p className="text-xs text-gray-500">por pessoa</p>
-                        {/* ✅✅✅ CORREÇÃO: Data formatada */}
-                        <p className="text-xs text-gray-400 mt-1">{formattedDate}</p>
-                      </div>
-                    </div>
-
-                    {/* Descrição do Matching */}
-                    {ride.match_description && (
-                      <div className="bg-gray-50 rounded px-3 py-2">
-                        <p className="text-xs text-gray-600 italic">{ride.match_description}</p>
-                      </div>
-                    )}
-
-                    {/* Botões de Ação */}
-                    <div className="flex gap-2">
-                      <Button 
-                        onClick={() => handleBookRide(ride)}
-                        className="flex-1 bg-red-600 hover:bg-red-700"
-                        disabled={!ride.availableSeats || ride.availableSeats <= 0}
-                      >
-                        <span className="mr-2">📅</span>
-                        {(!ride.availableSeats || ride.availableSeats <= 0) ? 'Lotado' : 'Reservar Agora'}
-                      </Button>
-                      
-                      {ride.allowNegotiation && (
-                        <Button 
-                          variant="outline"
-                          onClick={() => handleNegotiatePrice(ride)}
-                          className="flex-1"
-                        >
-                          <span className="mr-2">🤝</span>
-                          Negociar
-                        </Button>
-                      )}
-                    </div>
-
-                    {ride.allowPickupEnRoute && (
-                      <Button 
-                        variant="outline" 
-                        onClick={() => handleEnRoutePickup(ride)}
-                        className="w-full"
-                      >
-                        <span className="mr-2">📍</span>
-                        Pickup em Rota
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })
+            ridesToShow.map((ride) => (
+              <RideCard
+                key={ride.id}
+                ride={ride}
+                onBookRide={handleBookRide}
+                onNegotiatePrice={handleNegotiatePrice}
+                onEnRoutePickup={handleEnRoutePickup}
+              />
+            ))
           )}
         </div>
       </div>
