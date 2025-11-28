@@ -8,7 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/shared/hooks/use-toast';
 import { useAuth } from '@/shared/hooks/useAuth';
 import { Plus, Car, Edit, Trash2, AlertCircle, CheckCircle, X } from 'lucide-react';
-import { vehiclesApi, Vehicle, VehicleFormData } from '../../../api/driver/vehicles';
+import { vehiclesApi, Vehicle, VehicleFormData, VehicleTypeOption } from '../../../api/driver/vehicles';
+
+// ✅ CORREÇÃO: Interface para o usuário autenticado
+interface AuthUser {
+  uid?: string;
+  id?: string;
+  email?: string;
+  // Adicione outras propriedades que seu usuário possa ter
+}
 
 export default function VehiclesPage() {
   const { user } = useAuth();
@@ -18,7 +26,8 @@ export default function VehiclesPage() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
-  const [formLoading, setFormLoading] = useState(false); // ✅ NOVO ESTADO
+  const [formLoading, setFormLoading] = useState(false);
+  const [vehicleTypes, setVehicleTypes] = useState<VehicleTypeOption[]>([]);
 
   const [formData, setFormData] = useState<VehicleFormData>({
     plateNumber: '',
@@ -26,20 +35,27 @@ export default function VehiclesPage() {
     model: '',
     color: '',
     year: new Date().getFullYear(),
-    vehicleType: 'sedan',
+    vehicleType: 'economy',
     maxPassengers: 4,
     features: [],
     photoUrl: '',
   });
 
-  const vehicleTypes = [
-    { value: 'sedan', label: 'Sedan', description: 'Carro de 4 portas' },
-    { value: 'suv', label: 'SUV', description: 'Veículo utilitário desportivo' },
-    { value: 'hatchback', label: 'Hatchback', description: 'Carro compacto' },
-    { value: 'pickup', label: 'Pickup', description: 'Camião de caixa aberta' },
-    { value: 'van', label: 'Van', description: 'Van ou Minibus' },
-    { value: 'minibus', label: 'Minibus', description: 'Minibus de passageiros' },
-  ];
+  // ✅ CORREÇÃO: Carregar tipos de veículos do backend
+  const loadVehicleTypes = async () => {
+    try {
+      const response = await vehiclesApi.getVehicleTypes();
+      if (response.success) {
+        setVehicleTypes(response.types);
+        // ✅ CORREÇÃO: Definir o tipo padrão baseado nos tipos disponíveis
+        if (response.types.length > 0 && !formData.vehicleType) {
+          setFormData(prev => ({ ...prev, vehicleType: response.types[0].value }));
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro ao carregar tipos de veículos:', error);
+    }
+  };
 
   const loadVehicles = async () => {
     try {
@@ -51,22 +67,34 @@ export default function VehiclesPage() {
       } else {
         setError('Erro ao carregar veículos');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Erro ao carregar veículos:', error);
-      setError('Erro ao carregar veículos. Tente novamente.');
+      setError(error.message || 'Erro ao carregar veículos. Tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    loadVehicleTypes();
     loadVehicles();
   }, []);
+
+  // ✅ CORREÇÃO: Função auxiliar para obter o ID do usuário
+  const getUserId = (): string | null => {
+    if (!user) return null;
+    
+    // Tenta obter o ID do usuário de diferentes propriedades
+    const authUser = user as AuthUser;
+    return authUser.uid || authUser.id || null;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!user?.id) {
+    // ✅ CORREÇÃO: Usar a função auxiliar para obter o ID do usuário
+    const userId = getUserId();
+    if (!userId) {
       toast({
         title: "Erro de autenticação",
         description: "Você precisa estar autenticado para cadastrar um veículo.",
@@ -75,11 +103,21 @@ export default function VehiclesPage() {
       return;
     }
 
+    // ✅ CORREÇÃO: Validação adicional dos dados
+    if (!formData.plateNumber || !formData.make || !formData.model || !formData.color) {
+      toast({
+        title: "Dados incompletos",
+        description: "Preencha todos os campos obrigatórios.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
-      setFormLoading(true); // ✅ LOADING INICIADO
+      setFormLoading(true);
       
       if (editingVehicle) {
-        // Atualizar veículo
+        // ✅ CORREÇÃO: Atualizar veículo
         const response = await vehiclesApi.updateVehicle(editingVehicle.id, formData);
         if (response.success) {
           toast({
@@ -88,9 +126,11 @@ export default function VehiclesPage() {
           });
           await loadVehicles();
           resetForm();
+        } else {
+          throw new Error('Falha ao atualizar veículo');
         }
       } else {
-        // Criar veículo
+        // ✅ CORREÇÃO: Criar veículo
         const response = await vehiclesApi.createVehicle(formData);
         if (response.success) {
           toast({
@@ -99,6 +139,8 @@ export default function VehiclesPage() {
           });
           await loadVehicles();
           resetForm();
+        } else {
+          throw new Error('Falha ao criar veículo');
         }
       }
     } catch (error: any) {
@@ -109,7 +151,7 @@ export default function VehiclesPage() {
         variant: "destructive",
       });
     } finally {
-      setFormLoading(false); // ✅ LOADING FINALIZADO
+      setFormLoading(false);
     }
   };
 
@@ -119,13 +161,16 @@ export default function VehiclesPage() {
     }
 
     try {
+      // ✅ CORREÇÃO: Usar a função deleteVehicle corretamente
       const response = await vehiclesApi.deleteVehicle(vehicleId);
       if (response.success) {
         toast({
           title: "✅ Veículo desativado!",
-          description: "Seu veículo foi desativado com sucesso.",
+          description: response.message || "Seu veículo foi desativado com sucesso.",
         });
         await loadVehicles();
+      } else {
+        throw new Error(response.message || 'Falha ao desativar veículo');
       }
     } catch (error: any) {
       console.error('❌ Erro ao desativar veículo:', error);
@@ -144,7 +189,7 @@ export default function VehiclesPage() {
       model: '',
       color: '',
       year: new Date().getFullYear(),
-      vehicleType: 'sedan',
+      vehicleType: vehicleTypes.length > 0 ? vehicleTypes[0].value : 'economy',
       maxPassengers: 4,
       features: [],
       photoUrl: '',
@@ -159,7 +204,7 @@ export default function VehiclesPage() {
       make: vehicle.make,
       model: vehicle.model,
       color: vehicle.color,
-      year: vehicle.year,
+      year: vehicle.year || new Date().getFullYear(),
       vehicleType: vehicle.vehicleType,
       maxPassengers: vehicle.maxPassengers,
       features: vehicle.features || [],
@@ -167,6 +212,11 @@ export default function VehiclesPage() {
     });
     setEditingVehicle(vehicle);
     setShowForm(true);
+  };
+
+  // ✅ CORREÇÃO: Função para formatar a matrícula para exibição
+  const formatPlateForDisplay = (plate: string) => {
+    return plate.replace(/([A-Z]{2,3})(\d{3,4})([A-Z]{0,2})/, '$1-$2-$3').toUpperCase();
   };
 
   return (
@@ -236,11 +286,16 @@ export default function VehiclesPage() {
                                 {vehicle.make} {vehicle.model}
                               </h3>
                               <p className="text-sm text-gray-600">
-                                {vehicle.color} • {vehicle.plateNumber}
+                                {vehicle.color} • {formatPlateForDisplay(vehicle.plateNumber)}
                               </p>
                               <p className="text-xs text-gray-500">
                                 {vehicle.vehicleType} • {vehicle.maxPassengers} passageiros
                               </p>
+                              {vehicle.year && (
+                                <p className="text-xs text-gray-500">
+                                  Ano: {vehicle.year}
+                                </p>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center space-x-2">
@@ -264,6 +319,7 @@ export default function VehiclesPage() {
                               variant="outline"
                               size="sm"
                               onClick={() => startEdit(vehicle)}
+                              disabled={!vehicle.isActive}
                             >
                               <Edit className="w-4 h-4" />
                             </Button>
@@ -271,6 +327,7 @@ export default function VehiclesPage() {
                               variant="outline"
                               size="sm"
                               onClick={() => handleDelete(vehicle.id)}
+                              disabled={!vehicle.isActive}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -296,6 +353,7 @@ export default function VehiclesPage() {
                     variant="ghost"
                     size="sm"
                     onClick={resetForm}
+                    disabled={formLoading}
                   >
                     <X className="w-4 h-4" />
                   </Button>
@@ -308,11 +366,15 @@ export default function VehiclesPage() {
                         id="plateNumber"
                         value={formData.plateNumber}
                         onChange={(e) =>
-                          setFormData({ ...formData, plateNumber: e.target.value })
+                          setFormData({ ...formData, plateNumber: e.target.value.toUpperCase() })
                         }
-                        placeholder="ex: AB-123-CD"
+                        placeholder="ex: AB-123-CD ou ABC1234"
                         required
+                        disabled={formLoading}
                       />
+                      <p className="text-xs text-gray-500">
+                        Formatos aceitos: ABC 123, AB-123-CD, MMA-92-78, etc.
+                      </p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -326,6 +388,7 @@ export default function VehiclesPage() {
                           }
                           placeholder="ex: Toyota"
                           required
+                          disabled={formLoading}
                         />
                       </div>
 
@@ -339,6 +402,7 @@ export default function VehiclesPage() {
                           }
                           placeholder="ex: Corolla"
                           required
+                          disabled={formLoading}
                         />
                       </div>
                     </div>
@@ -354,6 +418,7 @@ export default function VehiclesPage() {
                           }
                           placeholder="ex: Preto"
                           required
+                          disabled={formLoading}
                         />
                       </div>
 
@@ -366,8 +431,9 @@ export default function VehiclesPage() {
                           max={new Date().getFullYear() + 1}
                           value={formData.year}
                           onChange={(e) =>
-                            setFormData({ ...formData, year: parseInt(e.target.value) })
+                            setFormData({ ...formData, year: parseInt(e.target.value) || undefined })
                           }
+                          disabled={formLoading}
                         />
                       </div>
                     </div>
@@ -379,6 +445,7 @@ export default function VehiclesPage() {
                         onValueChange={(value) =>
                           setFormData({ ...formData, vehicleType: value })
                         }
+                        disabled={formLoading}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione o tipo" />
@@ -386,7 +453,10 @@ export default function VehiclesPage() {
                         <SelectContent>
                           {vehicleTypes.map((type) => (
                             <SelectItem key={type.value} value={type.value}>
-                              {type.label} - {type.description}
+                              <div className="flex flex-col">
+                                <span>{type.label}</span>
+                                <span className="text-xs text-gray-500">{type.description}</span>
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -400,12 +470,13 @@ export default function VehiclesPage() {
                         onValueChange={(value) =>
                           setFormData({ ...formData, maxPassengers: parseInt(value) })
                         }
+                        disabled={formLoading}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Número de passageiros" />
                         </SelectTrigger>
                         <SelectContent>
-                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(
+                          {[1, 2, 3, 4, 5, 6, 7, 8].map(
                             (num) => (
                               <SelectItem key={num} value={num.toString()}>
                                 {num} {num === 1 ? 'passageiro' : 'passageiros'}
@@ -425,6 +496,7 @@ export default function VehiclesPage() {
                           setFormData({ ...formData, photoUrl: e.target.value })
                         }
                         placeholder="https://exemplo.com/foto.jpg"
+                        disabled={formLoading}
                       />
                     </div>
 

@@ -1001,7 +1001,7 @@ export class RideService {
         additionalInfo: rideData.additionalInfo || null,
         status: rideData.status || 'available',
         type: rideData.type || 'regular',
-        vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
+        vehicle_uuid: rideData.vehicleId,
         distance_real_km: rideData.distance_real_km || null,
         polyline: rideData.polyline || null,
         createdAt: new Date(),
@@ -1059,7 +1059,7 @@ export class RideService {
           pricePerSeat: rideData.pricePerSeat,
           vehicleType: rideData.vehicleType,
           status: 'available',
-          vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
+          vehicle_uuid: rideData.vehicleId,
           maxPassengers: rideData.maxPassengers || rideData.availableSeats
         };
       }

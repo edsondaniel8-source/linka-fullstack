@@ -1,21 +1,22 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
-import * as schema from "./shared/database-schema";
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import * as schema from "./shared/schema";
 
-neonConfig.webSocketConstructor = ws;
+// Para PostgreSQL, usamos a URL de conexão do .env
+const connectionString = process.env.DATABASE_URL || 'postgresql://linka_user:@localhost:5432/linka2_database';
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
+console.log('🔧 [PostgreSQL] Conectando ao banco:', connectionString);
 
-// 🚨 DEBUG: Verificar qual DATABASE_URL está sendo usada
-console.log('🔧 [DB DEBUG] DATABASE_URL configurada:', process.env.DATABASE_URL ? 'EXISTE' : 'NÃO EXISTE');
-console.log('🔧 [DB DEBUG] DATABASE_URL (mascarada):', process.env.DATABASE_URL?.replace(/:[^:@]*@/, ':***@'));
-console.log('🔧 [DB DEBUG] Tentando conectar ao banco...');
+// Criar conexão PostgreSQL
+const sql = postgres(connectionString, { 
+  max: 10, // Número máximo de conexões
+  idle_timeout: 30, // Tempo máximo de inatividade
+  connect_timeout: 30 // Tempo máximo de conexão
+});
 
-// CORREÇÃO: Use o Pool corretamente
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle(pool, { schema });
+export const db = drizzle(sql, { 
+  schema,
+  logger: process.env.NODE_ENV === 'development' // Log queries em desenvolvimento
+});
+
+console.log('✅ [PostgreSQL] Conexão estabelecida com sucesso!');

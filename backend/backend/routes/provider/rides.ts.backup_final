@@ -370,7 +370,7 @@ router.post('/',
         toCity: body.toCity,
         departureDate: body.departureDate,
         pricePerSeat: body.pricePerSeat,
-        vehicle_uuid: body.vehicleId || body.vehicle_uuid,
+        vehicle_uuid: body.vehicleId,
         // ✅✅✅ NOVO: Debug das coordenadas
         fromLat: body.fromLat,
         fromLng: body.fromLng,
@@ -420,7 +420,7 @@ router.post('/',
     }
 
     console.log('✅ [RIDES-POST] Validação do veículo concluída:', {
-      vehicle_uuid: body.vehicleId || body.vehicle_uuid,
+      vehicle_uuid: body.vehicleId,
       vehicleInfo: `${vehicle.make} ${vehicle.model} (${vehicle.color}) - ${vehicle.plate_number}`,
       capacity: `${body.maxPassengers}/${vehicle.max_passengers} passageiros`
     });
@@ -510,7 +510,7 @@ router.post('/',
     console.log('🎉 Ride criada com sucesso no banco:', { 
       rideId: newRide.id,
       driverId,
-      vehicle_uuid: body.vehicleId || body.vehicle_uuid,
+      vehicle_uuid: body.vehicleId,
       hasGeometries: !!(fromGeom && toGeom)
     });
 

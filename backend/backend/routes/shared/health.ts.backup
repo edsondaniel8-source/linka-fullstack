@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db } from '../../db';
-import { users } from '../../shared/schema';
+import { users } from '../../shared/database-schema';
 import { sql } from 'drizzle-orm'; // ✅ CORREÇÃO: Importação correta
 
 const router = Router();

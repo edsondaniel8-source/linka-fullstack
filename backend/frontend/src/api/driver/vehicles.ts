@@ -1,4 +1,4 @@
-// src/api/vehicles.ts - COM CORREÇÃO PARA O PROBLEMA DO RESPONSE
+// src/api/driver/vehicles.ts - COM CORREÇÃO PARA O PROBLEMA DO RESPONSE
 import { apiRequest } from '@/shared/lib/queryClient';
 
 export interface Vehicle {
@@ -66,7 +66,7 @@ export const vehiclesApi = {
     }
   },
 
-  // ✅ Criar veículo
+  // ✅ CORREÇÃO: Função createVehicle implementada corretamente
   createVehicle: async (vehicleData: VehicleFormData): Promise<{ success: boolean; vehicle: Vehicle; message: string }> => {
     console.log('🚗 [VEHICLES API] Criando veículo:', vehicleData);
     
@@ -80,7 +80,7 @@ export const vehiclesApi = {
     }
   },
 
-  // ✅ Atualizar veículo
+  // ✅ CORREÇÃO: Função updateVehicle implementada corretamente
   updateVehicle: async (vehicleId: string, vehicleData: Partial<VehicleFormData>): Promise<{ success: boolean; vehicle: Vehicle; message: string }> => {
     console.log('🚗 [VEHICLES API] Atualizando veículo:', vehicleId, vehicleData);
     
@@ -94,13 +94,13 @@ export const vehiclesApi = {
     }
   },
 
-  // ✅ Desativar veículo
-  deleteVehicle: async (vehicleId: string): Promise<{ success: boolean; message: string }> => {
+  // ✅ CORREÇÃO: Função deleteVehicle implementada corretamente
+  deleteVehicle: async (vehicleId: string): Promise<{ success: boolean; message: string; data?: { vehicleId: string } }> => {
     console.log('🚗 [VEHICLES API] Desativando veículo:', vehicleId);
     
     try {
-      // ✅ CORREÇÃO: Type assertion explícito
-      const data = await apiRequest<{ success: boolean; message: string }>('DELETE', `/api/vehicles/${vehicleId}`);
+      // ✅ CORREÇÃO: Type assertion explícito com tipo correto
+      const data = await apiRequest<{ success: boolean; message: string; data?: { vehicleId: string } }>('DELETE', `/api/vehicles/${vehicleId}`);
       return data;
     } catch (error) {
       console.error('❌ Erro ao desativar veículo:', error);

@@ -1,6 +1,6 @@
 // shared/db-helpers.ts - VERSÃO CORRIGIDA
 import { db } from '../db';
-import { vehicles } from '../shared/schema';
+import { vehicles } from '../shared/database-schema';
 import { sql, eq, and } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 

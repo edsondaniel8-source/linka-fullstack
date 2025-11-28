@@ -1,9 +1,9 @@
 import { db } from "../../db";
-import { rides, vehicles } from "../../shared/schema";
+import { rides, vehicles } from "../../shared/database-schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { formatDateOnly, formatTimeOnly, formatLongDate, formatWeekday } from '../utils/dateFormatter';
 import { v4 as uuidv4 } from 'uuid';
-import { insertRideSchema } from "../../shared/schema";
+import { insertRideSchema } from "../../shared/database-schema";
 import { z } from "zod";
 
 // ✅ MAPEAMENTO PARA TIPOS DE VEÍCULO
@@ -87,7 +87,7 @@ function normalizeDbRideToDto(raw: any) {
     departureTime: raw.departuretime || raw.departureTime || null,
     
     // ✅ INFORMAÇÕES COMPLETAS DO VEÍCULO COM MATRÍCULA
-    vehicle_uuid: raw.vehicle_id || raw.vehicleId || null,
+    vehicleId: raw.vehicle_id || raw.vehicleId || null,
     vehicleInfo: vehicleInfo,
     vehicle: `${raw.vehicle_make || ''} ${raw.vehicle_model || ''}`.trim() || null,
     vehicleType: raw.vehicle_type || raw.vehicleType || null,
@@ -721,7 +721,7 @@ export class RideService {
           r."availableSeats",
           r."pricePerSeat",
           r."vehicleType",
-          r."vehicle_uuid",
+          r."vehicleId",
           v."make" as vehicle_make,
           v."model" as vehicle_model,
           v."color" as vehicle_color,
@@ -730,7 +730,7 @@ export class RideService {
           r.status
         FROM rides r
         LEFT JOIN users u ON r."driverId" = u.id
-        LEFT JOIN vehicles v ON r."vehicle_uuid" = v.id
+        LEFT JOIN vehicles v ON r."vehicleId" = v.id
         WHERE r.status = 'available'
         AND r."departureDate" >= NOW()
         AND (
@@ -826,7 +826,7 @@ export class RideService {
           r."maxPassengers",
           r."pricePerSeat",
           r."vehicleType",
-          r."vehicle_uuid",
+          r."vehicleId",
           r."additionalInfo",
           r."distance_real_km",
           r."polyline",
@@ -840,7 +840,7 @@ export class RideService {
           v."plate_number" as vehicle_plate,
           v."max_passengers" as vehicle_max_passengers
         FROM rides r
-        LEFT JOIN vehicles v ON r."vehicle_uuid" = v.id
+        LEFT JOIN vehicles v ON r."vehicleId" = v.id
         WHERE r.id = ${id}
       `);
 
@@ -904,7 +904,7 @@ export class RideService {
           r."maxPassengers",
           r."pricePerSeat",
           r."vehicleType",
-          r."vehicle_uuid",
+          r."vehicleId",
           r."additionalInfo",
           r."distance_real_km",
           r."polyline",
@@ -918,7 +918,7 @@ export class RideService {
           v."plate_number" as vehicle_plate,
           v."max_passengers" as vehicle_max_passengers
         FROM rides r
-        LEFT JOIN vehicles v ON r."vehicle_uuid" = v.id
+        LEFT JOIN vehicles v ON r."vehicleId" = v.id
         WHERE r."driverId" = ${driverId}
       `;
 
@@ -982,8 +982,6 @@ export class RideService {
         toAddress: rideData.toAddress,
         fromProvince: rideData.fromProvince,
         toProvince: rideData.toProvince,
-        vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
-        vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
         fromCity: rideData.fromCity,
         toCity: rideData.toCity,
         fromDistrict: rideData.fromDistrict || '',
@@ -1001,7 +999,7 @@ export class RideService {
         additionalInfo: rideData.additionalInfo || null,
         status: rideData.status || 'available',
         type: rideData.type || 'regular',
-        vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
+        vehicleId: rideData.vehicleId,
         distance_real_km: rideData.distance_real_km || null,
         polyline: rideData.polyline || null,
         createdAt: new Date(),
@@ -1052,14 +1050,13 @@ export class RideService {
           toCity: rideData.toCity,
           fromProvince: rideData.fromProvince,
           toProvince: rideData.toProvince,
-        vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
           departureDate: rideData.departureDate,
           departureTime: rideData.departureTime,
           availableSeats: rideData.availableSeats,
           pricePerSeat: rideData.pricePerSeat,
           vehicleType: rideData.vehicleType,
           status: 'available',
-          vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
+          vehicleId: rideData.vehicleId,
           maxPassengers: rideData.maxPassengers || rideData.availableSeats
         };
       }
@@ -1172,7 +1169,7 @@ export class RideService {
           r."maxPassengers",
           r."pricePerSeat",
           r."vehicleType",
-          r."vehicle_uuid",
+          r."vehicleId",
           r."additionalInfo",
           r."distance_real_km",
           r."polyline",
@@ -1186,7 +1183,7 @@ export class RideService {
           v."plate_number" as vehicle_plate,
           v."max_passengers" as vehicle_max_passengers
         FROM rides r
-        LEFT JOIN vehicles v ON r."vehicle_uuid" = v.id
+        LEFT JOIN vehicles v ON r."vehicleId" = v.id
         WHERE r.id IN (${sql.raw(ids.map(id => `'${id}'`).join(', '))})
       `);
       

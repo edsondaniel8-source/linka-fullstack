@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { rides, bookings } from '../shared/schema';
+import { rides, bookings } from '../shared/database-schema';
 import { eq, and, gte, ilike, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 

@@ -53,7 +53,7 @@ import rpcRoutes from './rpc';
 
 // ===== IMPORTE DO DRIZZLE COM CAMINHOS CORRETOS =====
 import { db } from '../db';
-import { users } from '../shared/schema';
+import { users } from '../shared/database-schema';
 import { eq, sql } from 'drizzle-orm';
 
 // ✅ CORREÇÃO: Importar Firebase Admin para debug

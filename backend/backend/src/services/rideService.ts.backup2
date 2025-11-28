@@ -730,7 +730,7 @@ export class RideService {
           r.status
         FROM rides r
         LEFT JOIN users u ON r."driverId" = u.id
-        LEFT JOIN vehicles v ON r."vehicle_uuid" = v.id
+        LEFT JOIN vehicles v ON r."vehicleId" = v.id
         WHERE r.status = 'available'
         AND r."departureDate" >= NOW()
         AND (
@@ -840,7 +840,7 @@ export class RideService {
           v."plate_number" as vehicle_plate,
           v."max_passengers" as vehicle_max_passengers
         FROM rides r
-        LEFT JOIN vehicles v ON r."vehicle_uuid" = v.id
+        LEFT JOIN vehicles v ON r."vehicleId" = v.id
         WHERE r.id = ${id}
       `);
 
@@ -918,7 +918,7 @@ export class RideService {
           v."plate_number" as vehicle_plate,
           v."max_passengers" as vehicle_max_passengers
         FROM rides r
-        LEFT JOIN vehicles v ON r."vehicle_uuid" = v.id
+        LEFT JOIN vehicles v ON r."vehicleId" = v.id
         WHERE r."driverId" = ${driverId}
       `;
 
@@ -982,8 +982,6 @@ export class RideService {
         toAddress: rideData.toAddress,
         fromProvince: rideData.fromProvince,
         toProvince: rideData.toProvince,
-        vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
-        vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
         fromCity: rideData.fromCity,
         toCity: rideData.toCity,
         fromDistrict: rideData.fromDistrict || '',
@@ -1001,7 +999,7 @@ export class RideService {
         additionalInfo: rideData.additionalInfo || null,
         status: rideData.status || 'available',
         type: rideData.type || 'regular',
-        vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
+        vehicle_uuid: rideData.vehicleId,
         distance_real_km: rideData.distance_real_km || null,
         polyline: rideData.polyline || null,
         createdAt: new Date(),
@@ -1052,14 +1050,13 @@ export class RideService {
           toCity: rideData.toCity,
           fromProvince: rideData.fromProvince,
           toProvince: rideData.toProvince,
-        vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
           departureDate: rideData.departureDate,
           departureTime: rideData.departureTime,
           availableSeats: rideData.availableSeats,
           pricePerSeat: rideData.pricePerSeat,
           vehicleType: rideData.vehicleType,
           status: 'available',
-          vehicle_uuid: rideData.vehicleId || rideData.vehicle_uuid,
+          vehicle_uuid: rideData.vehicleId,
           maxPassengers: rideData.maxPassengers || rideData.availableSeats
         };
       }
@@ -1186,7 +1183,7 @@ export class RideService {
           v."plate_number" as vehicle_plate,
           v."max_passengers" as vehicle_max_passengers
         FROM rides r
-        LEFT JOIN vehicles v ON r."vehicle_uuid" = v.id
+        LEFT JOIN vehicles v ON r."vehicleId" = v.id
         WHERE r.id IN (${sql.raw(ids.map(id => `'${id}'`).join(', '))})
       `);
       

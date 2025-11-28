@@ -191,6 +191,38 @@ const getDateDifference = (rideDate: string, searchDate: string) => {
   }
 };
 
+// ✅ FUNÇÃO: Ordenar rides - data correta primeiro, depois por proximidade
+const sortRidesByDateRelevance = (rides: RideWithMatch[], searchDate: string) => {
+  return [...rides].sort((a, b) => {
+    const aIsExact = isRideDateExact(a.departureDate, searchDate);
+    const bIsExact = isRideDateExact(b.departureDate, searchDate);
+    
+    // ✅ Primeiro: Rides na data exata
+    if (aIsExact && !bIsExact) return -1;
+    if (!aIsExact && bIsExact) return 1;
+    
+    // ✅ Segundo: Ambos na data exata - ordenar por horário mais próximo
+    if (aIsExact && bIsExact) {
+      const aDate = parseISO(a.departureDate);
+      const bDate = parseISO(b.departureDate);
+      return aDate.getTime() - bDate.getTime(); // Mais cedo primeiro
+    }
+    
+    // ✅ Terceiro: Ambos em datas diferentes - ordenar por proximidade da data
+    const aDiff = getDateDifference(a.departureDate, searchDate);
+    const bDiff = getDateDifference(b.departureDate, searchDate);
+    
+    if (aDiff !== bDiff) {
+      return aDiff - bDiff; // Menor diferença primeiro
+    }
+    
+    // ✅ Quarto: Mesma diferença - ordenar por score de matching
+    const aScore = a.direction_score || 0;
+    const bScore = b.direction_score || 0;
+    return bScore - aScore; // Maior score primeiro
+  });
+};
+
 // ✅ COMPONENTE: Banner de aviso para datas diferentes
 const DateWarningBanner = ({ searchDate, hasExactDateRides }: { 
   searchDate: string; 
@@ -853,8 +885,11 @@ export default function RideSearchPage() {
     setBookingData({...bookingData, passengers: finalValue});
   };
 
-  // ✅ CALCULAR SE HÁ RIDES NA DATA EXATA
-  const hasExactDateRides = rides.some(ride => 
+  // ✅ ORDENAR RIDES POR RELEVÂNCIA DE DATA
+  const sortedRides = sortRidesByDateRelevance(rides, searchParams.date);
+
+  // ✅ CALCULAR SE HÁ RIDES NA DATA EXATA (usando sortedRides)
+  const hasExactDateRides = sortedRides.some(ride => 
     isRideDateExact(ride.departureDate, searchParams.date)
   );
 
@@ -929,8 +964,8 @@ export default function RideSearchPage() {
                   </div>
                 ) : (
                   <>
-                    {rides.length} viagem(s) encontrada(s)
-                    {!hasExactDateRides && rides.length > 0 && (
+                    {sortedRides.length} viagem(s) encontrada(s)
+                    {!hasExactDateRides && sortedRides.length > 0 && (
                       <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-200 text-xs">
                         <span className="mr-1">📅</span>
                         Datas próximas
@@ -953,7 +988,7 @@ export default function RideSearchPage() {
                 </div>
                 <p className="text-gray-600 text-sm">Buscando viagens mais relevantes...</p>
               </div>
-            ) : rides.length === 0 ? (
+            ) : sortedRides.length === 0 ? (
               <div className="text-center py-8">
                 <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-3">
                   <User className="w-6 h-6 text-gray-400" />
@@ -977,12 +1012,12 @@ export default function RideSearchPage() {
                 />
                 
                 {/* ✅✅✅ ESTATÍSTICAS ATUALIZADAS COM INFO DE DATAS */}
-                {rides.some(ride => ride.match_type) && (
+                {sortedRides.some(ride => ride.match_type) && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <h4 className="text-sm font-medium text-blue-900 mb-2 flex items-center">
                       <span className="text-blue-600 mr-2">⚡</span>
                       Busca Inteligente - Resultados
-                      {!hasExactDateRides && rides.length > 0 && (
+                      {!hasExactDateRides && sortedRides.length > 0 && (
                         <span className="text-orange-600 text-xs ml-2 italic">
                           • Mostrando rides em datas próximas
                         </span>
@@ -991,31 +1026,31 @@ export default function RideSearchPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                       <div className="text-center">
                         <div className="text-blue-700 font-bold">
-                          {rides.filter(r => isRideDateExact(r.departureDate, searchParams.date)).length}
+                          {sortedRides.filter(r => isRideDateExact(r.departureDate, searchParams.date)).length}
                         </div>
                         <div className="text-blue-600">Na data</div>
                       </div>
                       <div className="text-center">
                         <div className="text-blue-700 font-bold">
-                          {rides.filter(r => !isRideDateExact(r.departureDate, searchParams.date)).length}
+                          {sortedRides.filter(r => !isRideDateExact(r.departureDate, searchParams.date)).length}
                         </div>
                         <div className="text-blue-600">Datas próximas</div>
                       </div>
                       <div className="text-center">
                         <div className="text-blue-700 font-bold">
-                          {rides.filter(r => r.direction_score && r.direction_score >= 80).length}
+                          {sortedRides.filter(r => r.direction_score && r.direction_score >= 80).length}
                         </div>
                         <div className="text-blue-600">Alta Pont.</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-blue-700 font-bold">{rides.length}</div>
+                        <div className="text-blue-700 font-bold">{sortedRides.length}</div>
                         <div className="text-blue-600">Total</div>
                       </div>
                     </div>
                   </div>
                 )}
                 
-                {rides.map((ride) => {
+                {sortedRides.map((ride) => {
                   const availableSeats = getAvailableSeats(ride);
                   const canBook = availableSeats >= bookingData.passengers;
                   const isFullyBooked = availableSeats === 0;

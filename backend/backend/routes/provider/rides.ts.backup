@@ -6,7 +6,7 @@ import { insertRideSchema, updateRideSchema } from '../../shared/schema';
 import { z } from 'zod';
 import { db } from '../../db';
 import { sql, eq, and } from 'drizzle-orm';
-import { vehicles } from '../../shared/schema';
+import { vehicles } from '../../shared/database-schema';
 import { vehicleQueries } from '../../shared/db-helpers';
 
 const router = Router();
@@ -337,7 +337,7 @@ const debugRideCreation = async (req: AuthenticatedRequest, res: Response, next:
       departureDate: req.body.departureDate,
       pricePerSeat: req.body.pricePerSeat,
       availableSeats: req.body.availableSeats,
-      vehicle_uuid: req.body.vehicleId,
+      vehicleId: req.body.vehicleId,
       // ✅✅✅ NOVO: Debug das coordenadas
       fromLat: req.body.fromLat,
       fromLng: req.body.fromLng,
@@ -370,7 +370,7 @@ router.post('/',
         toCity: body.toCity,
         departureDate: body.departureDate,
         pricePerSeat: body.pricePerSeat,
-        vehicle_uuid: body.vehicleId || body.vehicle_uuid,
+        vehicleId: body.vehicleId,
         // ✅✅✅ NOVO: Debug das coordenadas
         fromLat: body.fromLat,
         fromLng: body.fromLng,
@@ -420,12 +420,12 @@ router.post('/',
     }
 
     console.log('✅ [RIDES-POST] Validação do veículo concluída:', {
-      vehicle_uuid: body.vehicleId || body.vehicle_uuid,
+      vehicleId: body.vehicleId,
       vehicleInfo: `${vehicle.make} ${vehicle.model} (${vehicle.color}) - ${vehicle.plate_number}`,
       capacity: `${body.maxPassengers}/${vehicle.max_passengers} passageiros`
     });
 
-    logger.info('📝 Iniciando criação de ride', { driverId, vehicle_uuid: body.vehicleId });
+    logger.info('📝 Iniciando criação de ride', { driverId, vehicleId: body.vehicleId });
 
     const { 
       fromAddress, 
@@ -488,7 +488,7 @@ router.post('/',
       pricePerSeat: safeNumber(pricePerSeat, 0),
       vehicleType: safeString(vehicleType, 'car'),
       additionalInfo: safeString(additionalInfo),
-      vehicle_uuid: safeString(vehicleId), // ✅ NOVO: Incluir vehicleId
+      vehicleId: safeString(vehicleId), // ✅ NOVO: Incluir vehicleId
       status: 'available' as const
     };
 
@@ -510,7 +510,7 @@ router.post('/',
     console.log('🎉 Ride criada com sucesso no banco:', { 
       rideId: newRide.id,
       driverId,
-      vehicle_uuid: body.vehicleId || body.vehicle_uuid,
+      vehicleId: body.vehicleId,
       hasGeometries: !!(fromGeom && toGeom)
     });
 

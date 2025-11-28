@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import * as schema from "./shared/database-schema";
+import * as schema from "./shared/schema";
 
 // Para PostgreSQL, usamos a URL de conexão do .env
 const connectionString = process.env.DATABASE_URL || 'postgresql://linka_user:@localhost:5432/linka2_database';
