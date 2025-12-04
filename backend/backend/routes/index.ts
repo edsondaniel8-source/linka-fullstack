@@ -15,12 +15,14 @@ import geoRoutes from './geo';
 import billingRoutes from './billing';
 import chatRoutes from './chat';
 
-
 // ===== ROTAS DE LOCALIDADES =====
 import locationsRouter from './locations';
 
 // ===== SISTEMA DE HOTELS =====
 import hotelController from '../src/modules/hotels/hotelController';
+
+// ===== ✅✅✅ NOVO SISTEMA DE HOTÉIS v2 =====
+import { newHotelRoutes } from '../src/modules/hotels/newHotelRoutes';
 
 // ===== NOVAS IMPORTACOES PARA PROVIDER/DRIVER =====
 import providerRidesRoutes from './provider/rides';
@@ -538,6 +540,10 @@ export async function registerRoutes(app: express.Express): Promise<void> {
   app.use('/api/drizzle', drizzleApiRoutes);
   console.log('🗃️ API Drizzle principal configurada');
 
+  // ===== ✅✅✅ NOVO SISTEMA DE HOTÉIS v2 =====
+  app.use('/api/v2/hotels', newHotelRoutes);
+  console.log('🏨🏨 SISTEMA DE HOTÉIS v2 REGISTRADO COM SUCESSO!');
+
   // ===== ✅✅✅ ROTAS DE VEÍCULOS =====
   app.use('/api/vehicles', vehicleRoutes);
   console.log('🚗 Rotas de veículos registradas com sucesso');
@@ -550,9 +556,9 @@ export async function registerRoutes(app: express.Express): Promise<void> {
   app.use('/api/chat', chatRoutes);
    console.log('🔐 Sistemas funcionais registrados com sucesso');
 
-  // ===== SISTEMA DE HOTELS =====
+  // ===== SISTEMA DE HOTELS (legado - manter para compatibilidade) =====
   app.use('/api/hotels', hotelController);
-  console.log('🏨 Rotas de hotels registradas com sucesso');
+  console.log('🏨 Rotas de hotels legadas registradas (para compatibilidade)');
 
   // ===== NOVAS ROTAS DE PROVIDER/DRIVER =====
   app.use('/api/provider/rides', providerRidesRoutes);
@@ -647,6 +653,7 @@ export async function registerRoutes(app: express.Express): Promise<void> {
         services: {
           auth: 'operational',
           hotels: 'operational',
+          hotels_v2: 'operational', // ✅ NOVO: Sistema de hotéis v2
           rides: 'operational',
           vehicles: 'operational', // ✅ NOVO: Serviço de veículos
           partnerships: 'operational',
@@ -655,7 +662,7 @@ export async function registerRoutes(app: express.Express): Promise<void> {
           search_intelligent: 'operational',
           rpc: 'operational' // ✅ NOVO: Serviço RPC
         },
-        version: '1.0.0'
+        version: '2.0.0'
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
@@ -688,10 +695,11 @@ export async function registerRoutes(app: express.Express): Promise<void> {
         '/api/health',
         '/api/auth',
         '/api/hotels',
+        '/api/v2/hotels', // ✅ NOVO: Sistema de hotéis v2
         '/api/locations/suggest',
         '/api/test-postgis',
         '/api/rides',
-        '/api/vehicles', // ✅ NOVA: Rotas de veículos
+        '/api/vehicles', // ✅ NOVO: Rotas de veículos
         '/api/events',
         '/api/users',
         '/api/admin/system',
@@ -728,8 +736,9 @@ export async function registerRoutes(app: express.Express): Promise<void> {
   console.log('🏥 Health: http://localhost:8000/api/health');
   console.log('🗺️  PostGIS: http://localhost:8000/api/test-postgis');
   console.log('📍 Sugestões: http://localhost:8000/api/locations/suggest?query=map');
-  console.log('🚗 Veículos: http://localhost:8000/api/vehicles'); // ✅ NOVA
-  console.log('🧠 RPC: http://localhost:8000/api/rpc/test'); // ✅ NOVA
+  console.log('🚗 Veículos: http://localhost:8000/api/vehicles');
+  console.log('🧠 RPC: http://localhost:8000/api/rpc/test');
   console.log('🔍 Debug Auth: http://localhost:8000/api/debug/firebase-auth');
+  console.log('🏨🏨 SISTEMA DE HOTÉIS v2 DISPONÍVEL: http://localhost:8000/api/v2/hotels/search?location=Maputo&guests=2');
   console.log('✅ Todas as APIs configuradas e funcionando!');
 }
