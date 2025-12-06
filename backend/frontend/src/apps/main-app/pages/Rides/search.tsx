@@ -17,7 +17,7 @@ import useAuth from "@/shared/hooks/useAuth";
 
 // ✅✅✅ CORREÇÃO: IMPORTAR DA API CLIENT EM VEZ DO TYPES
 import { clientRidesApi, type Ride } from "@/api/client/rides";
-import { formatPrice } from "@/services/api";
+import { formatPrice } from "@/shared/lib/api-utils";
 
 // ✅✅✅ CORREÇÃO CRÍTICA: Interface local COMPATÍVEL com a Ride original
 interface RideWithMatch {

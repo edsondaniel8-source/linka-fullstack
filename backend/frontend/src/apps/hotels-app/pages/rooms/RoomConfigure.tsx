@@ -1,163 +1,195 @@
 import React, { useState, useEffect } from "react";
 import { useLocation, useParams } from "wouter";
-import accommodationService, { HotelRoom } from "../../../../shared/lib/accommodationService";
+import { apiService } from "@/services/api";
+import type { RoomType, RoomTypeCreateRequest, RoomTypeUpdateRequest } from "@/types/index";
 
 const RoomConfigure: React.FC = () => {
   const [, setLocation] = useLocation();
   const params = useParams();
 
-  // ⭐ OBTER accommodationId DINAMICAMENTE
-  const getAccommodationId = (): string | null => {
+  // ⭐ OBTER hotelId DINAMICAMENTE
+  const getHotelId = (): string | null => {
     if (params.hotelId) return params.hotelId;
     if (params.id) return params.id;
     return null;
   };
 
-  const actualAccommodationId = getAccommodationId();
-  const roomId = params.roomId;
+  const hotelId = getHotelId();
+  const roomTypeId = params.roomId;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [roomData, setRoomData] = useState<Partial<HotelRoom>>({
-    roomNumber: "",
-    roomType: "",
-    pricePerNight: 0,
-    status: "Disponível",
+  
+  // ⭐ DADOS DO TIPO DE QUARTO
+  const [roomTypeData, setRoomTypeData] = useState<Partial<RoomType>>({
+    name: "",
+    description: "",
+    max_occupancy: 2,
+    base_occupancy: 1,
+    base_price: 0,
+    size: "",
+    bed_type: "",
+    bed_types: [],
+    bathroom_type: "",
     amenities: [],
     images: [],
+    total_units: 1,
+    available_units: 1,
+    extra_adult_price: 0,
+    extra_child_price: 0,
+    children_policy: "",
+    is_active: true
   });
 
   // Carrega dados se estiver editando
   useEffect(() => {
-    if (!roomId) {
+    if (!roomTypeId || !hotelId) {
       setLoading(false);
       return;
     }
 
-    const fetchRoom = async () => {
+    const fetchRoomType = async () => {
       try {
-        const data = await accommodationService.getRoomById(roomId);
-        setRoomData(data);
+        // ✅ USAR apiService.getRoomTypeDetails
+        const response = await apiService.getRoomTypeDetails(hotelId, roomTypeId);
+        
+        if (response.success && response.data) {
+          setRoomTypeData(response.data);
+        } else {
+          setError(response.error || "Não foi possível carregar os dados do tipo de quarto.");
+        }
       } catch (err) {
-        console.error("Erro ao carregar quarto:", err);
-        setError("Não foi possível carregar os dados do quarto.");
+        console.error("Erro ao carregar tipo de quarto:", err);
+        setError("Erro ao carregar os dados do tipo de quarto.");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchRoom();
-  }, [roomId]);
+    fetchRoomType();
+  }, [roomTypeId, hotelId]);
 
-  const handleChange = (key: keyof HotelRoom, value: any) => {
-    setRoomData((prev) => ({ ...prev, [key]: value }));
+  const handleChange = (key: keyof RoomType, value: any) => {
+    setRoomTypeData((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleSave = async () => {
-    if (!actualAccommodationId) {
+    if (!hotelId) {
       alert("Erro: Nenhum hotel selecionado. Volte para a lista de hotéis.");
       setLocation("/hotels");
       return;
     }
 
     // ⭐ VALIDAÇÃO DOS CAMPOS OBRIGATÓRIOS
-    if (!roomData.roomNumber?.trim()) {
-      alert("Por favor, preencha o número do quarto.");
+    if (!roomTypeData.name?.trim()) {
+      alert("Por favor, preencha o nome do tipo de quarto.");
       return;
     }
 
-    if (!roomData.roomType?.trim()) {
-      alert("Por favor, selecione o tipo de quarto.");
+    if (!roomTypeData.base_price || roomTypeData.base_price <= 0) {
+      alert("Por favor, insira um preço base válido.");
+      return;
+    }
+
+    if (!roomTypeData.max_occupancy || roomTypeData.max_occupancy <= 0) {
+      alert("Por favor, insira uma ocupação máxima válida.");
       return;
     }
 
     setSaving(true);
+    setError(null);
+    
     try {
-      const roomToSave = {
-        accommodationId: actualAccommodationId,
-        roomTypeId: roomData.roomTypeId || roomData.roomType || "",
-        roomNumber: roomData.roomNumber || "",
-        roomType: roomData.roomType || "",
-        pricePerNight: roomData.pricePerNight ?? 0,
-        status: roomData.status || "Disponível",
-        amenities: roomData.amenities || [],
-        images: roomData.images || [],
+      // ⭐ PREPARAR DADOS PARA ENVIO
+      const roomToSave: RoomTypeCreateRequest | RoomTypeUpdateRequest = {
+        name: roomTypeData.name || "",
+        description: roomTypeData.description || "",
+        maxOccupancy: roomTypeData.max_occupancy || 2,
+        baseOccupancy: roomTypeData.base_occupancy || 1,
+        basePrice: roomTypeData.base_price || 0,
+        size: roomTypeData.size,
+        bedType: roomTypeData.bed_type,
+        bedTypes: roomTypeData.bed_types || [],
+        bathroomType: roomTypeData.bathroom_type,
+        amenities: roomTypeData.amenities || [],
+        images: roomTypeData.images || [],
+        totalUnits: roomTypeData.total_units || 1,
+        availableUnits: roomTypeData.available_units || 1,
+        extraAdultPrice: roomTypeData.extra_adult_price,
+        extraChildPrice: roomTypeData.extra_child_price,
+        childrenPolicy: roomTypeData.children_policy,
+        isActive: roomTypeData.is_active !== false
       };
 
-      if (roomId) {
-        // ⭐ CORREÇÃO: Passa hotelId (accommodationId) como primeiro parâmetro
-        await accommodationService.updateRoom(actualAccommodationId, roomId, roomToSave);
-        alert("Quarto atualizado com sucesso!");
+      if (roomTypeId) {
+        // ✅ EDITAR: Usar apiService.updateRoomType
+        const response = await apiService.updateRoomType(hotelId, roomTypeId, roomToSave);
+        
+        if (response.success) {
+          alert("✅ Tipo de quarto atualizado com sucesso!");
+        } else {
+          throw new Error(response.error || "Erro ao atualizar tipo de quarto");
+        }
       } else {
-        await accommodationService.createRoom(roomToSave);
-        alert("Quarto criado com sucesso!");
+        // ✅ CRIAR: Usar apiService.createRoomType
+        const response = await apiService.createRoomType(hotelId, roomToSave);
+        
+        if (response.success) {
+          alert("✅ Tipo de quarto criado com sucesso!");
+        } else {
+          throw new Error(response.error || "Erro ao criar tipo de quarto");
+        }
       }
       
-      // ⭐ CORRIGIDO: Navega de volta para a página apropriada com a rota correta
-      if (actualAccommodationId) {
-        setLocation(`/hotels/manage-hotel/${actualAccommodationId}`);
-      } else {
-        setLocation("/rooms");
-      }
-    } catch (err) {
-      console.error("Erro ao salvar quarto:", err);
-      alert("Erro ao salvar o quarto. Verifique os dados e tente novamente.");
+      // ⭐ NAVEGAR DE VOLTA
+      setLocation(`/hotels/${hotelId}/room-types`);
+      
+    } catch (err: any) {
+      console.error("Erro ao salvar tipo de quarto:", err);
+      setError(err.message || "Erro ao salvar o tipo de quarto. Verifique os dados e tente novamente.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleCancel = () => {
-    // ⭐ CORRIGIDO: Navega de volta com a rota correta
-    if (actualAccommodationId) {
-      setLocation(`/hotels/manage-hotel/${actualAccommodationId}`);
+    if (hotelId) {
+      setLocation(`/hotels/${hotelId}/room-types`);
     } else {
-      setLocation("/rooms");
+      setLocation("/hotels");
     }
   };
 
   // ⭐ ESTADO DE SEM HOTEL SELECIONADO
-  if (!actualAccommodationId) {
+  if (!hotelId) {
     return (
-      <div style={{ maxWidth: 600, margin: "0 auto", padding: 16 }}>
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '40px 20px',
-          border: '2px dashed #ccc',
-          borderRadius: '8px',
-          backgroundColor: '#f9f9f9'
-        }}>
-          <h2 style={{ color: '#666', marginBottom: '16px' }}>Nenhum Hotel Selecionado</h2>
-          <p style={{ color: '#888', marginBottom: '24px' }}>
-            Para {roomId ? 'editar' : 'criar'} um quarto, você precisa acessar através de um hotel específico.
-          </p>
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full p-8 text-center bg-white rounded-lg shadow-lg border border-gray-200">
+          <div className="mb-6">
+            <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-yellow-100 rounded-full">
+              <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.998-.833-2.732 0L4.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Nenhum Hotel Selecionado</h2>
+            <p className="text-gray-600">
+              Para {roomTypeId ? 'editar' : 'criar'} um tipo de quarto, você precisa acessar através de um hotel específico.
+            </p>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button 
               onClick={() => setLocation("/hotels")}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#0070f3',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
             >
               Ir para Meus Hotéis
             </button>
             <button 
-              onClick={() => setLocation("/rooms")}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
+              onClick={() => setLocation("/")}
+              className="px-6 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium"
             >
-              Ver Todos os Quartos
+              Voltar ao Início
             </button>
           </div>
         </div>
@@ -166,150 +198,342 @@ const RoomConfigure: React.FC = () => {
   }
 
   if (loading) return (
-    <div style={{ maxWidth: 600, margin: "0 auto", padding: 16, textAlign: 'center' }}>
-      <p>Carregando dados do quarto...</p>
-      <small>Hotel ID: {actualAccommodationId}</small>
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+        <p className="text-gray-600">Carregando dados do tipo de quarto...</p>
+        <small className="text-gray-400 block mt-2">Hotel ID: {hotelId}</small>
+      </div>
     </div>
   );
   
   if (error) return (
-    <div style={{ maxWidth: 600, margin: "0 auto", padding: 16, color: '#dc2626' }}>
-      {error}
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="max-w-md w-full p-6 bg-red-50 border border-red-200 rounded-lg">
+        <h2 className="text-xl font-bold text-red-700 mb-2">Erro</h2>
+        <p className="text-red-600 mb-4">{error}</p>
+        <button
+          onClick={() => hotelId ? setLocation(`/hotels/${hotelId}/room-types`) : setLocation("/hotels")}
+          className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+        >
+          Voltar
+        </button>
+      </div>
     </div>
   );
 
   return (
-    <div style={{ maxWidth: 600, margin: "0 auto", padding: 16 }}>
-      <div style={{ marginBottom: '16px' }}>
-        <h1>{roomId ? "Editar Quarto" : "Criar Novo Quarto"}</h1>
-        <small style={{ color: '#666' }}>
-          Hotel ID: {actualAccommodationId}
-          {roomId && ` | Quarto ID: ${roomId}`}
-        </small>
-      </div>
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-4xl mx-auto px-4">
+        {/* Cabeçalho */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                {roomTypeId ? "✏️ Editar Tipo de Quarto" : "➕ Criar Novo Tipo de Quarto"}
+              </h1>
+              <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
+                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                  Hotel ID: {hotelId}
+                </span>
+                {roomTypeId && (
+                  <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded">
+                    Tipo de Quarto ID: {roomTypeId}
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            <button
+              onClick={handleCancel}
+              className="px-4 py-2 text-gray-700 hover:text-gray-900"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          <p className="text-gray-600">
+            Preencha os detalhes do tipo de quarto. Campos marcados com * são obrigatórios.
+          </p>
+        </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>
-          Número do Quarto: *
-        </label>
-        <input
-          type="text"
-          value={roomData.roomNumber || ""}
-          onChange={(e) => handleChange("roomNumber", e.target.value)}
-          style={{ width: "100%", padding: 8, borderRadius: 4, border: "1px solid #ccc" }}
-          placeholder="Ex: 101, 201-A, Suite Master"
-          required
-        />
-      </div>
+        {/* Formulário */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <div className="space-y-6">
+            {/* Seção: Informações Básicas */}
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-4 pb-2 border-b">Informações Básicas</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Nome do Tipo de Quarto *
+                  </label>
+                  <input
+                    type="text"
+                    value={roomTypeData.name || roomTypeData.room_type_name || ""}
+                    onChange={(e) => handleChange("name", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Ex: Quarto Standard, Suíte Premium"
+                    required
+                  />
+                </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>
-          Tipo de Quarto: *
-        </label>
-        <select
-          value={roomData.roomType || ""}
-          onChange={(e) => handleChange("roomType", e.target.value)}
-          style={{ width: "100%", padding: 8, borderRadius: 4, border: "1px solid #ccc" }}
-          required
-        >
-          <option value="">Selecione o tipo</option>
-          <option value="Standard">Standard</option>
-          <option value="Deluxe">Deluxe</option>
-          <option value="Suite">Suite</option>
-          <option value="Família">Família</option>
-          <option value="Executivo">Executivo</option>
-        </select>
-      </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Preço Base (MZN) *
+                  </label>
+                  <input
+                    type="number"
+                    value={roomTypeData.base_price || roomTypeData.price_per_night || 0}
+                    onChange={(e) => handleChange("base_price", parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="0"
+                    step="0.01"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>
-          Preço por Noite (MT):
-        </label>
-        <input
-          type="number"
-          value={roomData.pricePerNight || 0}
-          onChange={(e) => handleChange("pricePerNight", parseFloat(e.target.value) || 0)}
-          style={{ width: "100%", padding: 8, borderRadius: 4, border: "1px solid #ccc" }}
-          min="0"
-          step="0.01"
-        />
-      </div>
+            {/* Seção: Descrição */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Descrição
+              </label>
+              <textarea
+                value={roomTypeData.description || ""}
+                onChange={(e) => handleChange("description", e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                rows={3}
+                placeholder="Descreva as características deste tipo de quarto..."
+              />
+            </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>
-          Status:
-        </label>
-        <select
-          value={roomData.status || "Disponível"}
-          onChange={(e) => handleChange("status", e.target.value)}
-          style={{ width: "100%", padding: 8, borderRadius: 4, border: "1px solid #ccc" }}
-        >
-          <option value="Disponível">Disponível</option>
-          <option value="Ocupado">Ocupado</option>
-          <option value="Manutenção">Manutenção</option>
-          <option value="Reservado">Reservado</option>
-        </select>
-      </div>
+            {/* Seção: Capacidade */}
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-4 pb-2 border-b">Capacidade</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Ocupação Máxima *
+                  </label>
+                  <input
+                    type="number"
+                    value={roomTypeData.max_occupancy || 2}
+                    onChange={(e) => handleChange("max_occupancy", parseInt(e.target.value) || 2)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="1"
+                    max="10"
+                    required
+                  />
+                </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>
-          Amenities (separados por vírgula):
-        </label>
-        <input
-          type="text"
-          value={(roomData.amenities || []).join(", ")}
-          onChange={(e) => handleChange("amenities", e.target.value.split(",").map((a) => a.trim()))}
-          style={{ width: "100%", padding: 8, borderRadius: 4, border: "1px solid #ccc" }}
-          placeholder="Ex: Wi-Fi, Ar condicionado, TV, Frigobar"
-        />
-      </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Ocupação Base
+                  </label>
+                  <input
+                    type="number"
+                    value={roomTypeData.base_occupancy || 1}
+                    onChange={(e) => handleChange("base_occupancy", parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="1"
+                    max={roomTypeData.max_occupancy || 2}
+                  />
+                </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>
-          URLs das Imagens (separadas por vírgula):
-        </label>
-        <input
-          type="text"
-          value={(roomData.images || []).join(", ")}
-          onChange={(e) => handleChange("images", e.target.value.split(",").map((a) => a.trim()))}
-          style={{ width: "100%", padding: 8, borderRadius: 4, border: "1px solid #ccc" }}
-          placeholder="Ex: https://exemplo.com/foto1.jpg, https://exemplo.com/foto2.jpg"
-        />
-      </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Tamanho (m²)
+                  </label>
+                  <input
+                    type="text"
+                    value={roomTypeData.size || ""}
+                    onChange={(e) => handleChange("size", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Ex: 25"
+                  />
+                </div>
+              </div>
+            </div>
 
-      <div style={{ marginTop: 24, display: 'flex', gap: '12px' }}>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          style={{ 
-            padding: "12px 24px", 
-            background: "#10b981", 
-            color: "#fff", 
-            border: "none", 
-            borderRadius: 4, 
-            cursor: saving ? "not-allowed" : "pointer",
-            opacity: saving ? 0.7 : 1
-          }}
-        >
-          {saving ? "Salvando..." : "Salvar Quarto"}
-        </button>
-        <button
-          onClick={handleCancel}
-          style={{ 
-            padding: "12px 24px", 
-            background: "#6b7280", 
-            color: "#fff", 
-            border: "none", 
-            borderRadius: 4, 
-            cursor: "pointer" 
-          }}
-        >
-          Cancelar
-        </button>
-      </div>
+            {/* Seção: Unidades */}
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-4 pb-2 border-b">Disponibilidade</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Total de Unidades *
+                  </label>
+                  <input
+                    type="number"
+                    value={roomTypeData.total_units || 1}
+                    onChange={(e) => handleChange("total_units", parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="1"
+                    required
+                  />
+                </div>
 
-      <div style={{ marginTop: 16, fontSize: '12px', color: '#666' }}>
-        <p>* Campos obrigatórios</p>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Unidades Disponíveis *
+                  </label>
+                  <input
+                    type="number"
+                    value={roomTypeData.available_units || roomTypeData.total_units || 1}
+                    onChange={(e) => handleChange("available_units", parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="0"
+                    max={roomTypeData.total_units || 1}
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Seção: Detalhes do Quarto */}
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-4 pb-2 border-b">Detalhes do Quarto</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Tipo de Cama
+                  </label>
+                  <input
+                    type="text"
+                    value={roomTypeData.bed_type || ""}
+                    onChange={(e) => handleChange("bed_type", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Ex: Casal King, 2 Solteiros"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Tipo de Banheiro
+                  </label>
+                  <input
+                    type="text"
+                    value={roomTypeData.bathroom_type || ""}
+                    onChange={(e) => handleChange("bathroom_type", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Ex: Privativo, Compartilhado"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Seção: Comodidades */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Comodidades (separadas por vírgula)
+              </label>
+              <input
+                type="text"
+                value={(roomTypeData.amenities || []).join(", ")}
+                onChange={(e) => handleChange("amenities", e.target.value.split(",").map((a) => a.trim()))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Wi-Fi, TV, Ar condicionado, Frigobar, Cafeteira"
+              />
+            </div>
+
+            {/* Seção: URLs das Imagens */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                URLs das Imagens (separadas por vírgula)
+              </label>
+              <input
+                type="text"
+                value={(roomTypeData.images || []).join(", ")}
+                onChange={(e) => handleChange("images", e.target.value.split(",").map((a) => a.trim()))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="https://exemplo.com/foto1.jpg, https://exemplo.com/foto2.jpg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Insira URLs completas de imagens. O sistema aceita formatos JPG, PNG, WebP.
+              </p>
+            </div>
+
+            {/* Seção: Status */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Status do Tipo de Quarto
+              </label>
+              <div className="flex items-center space-x-6">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="status"
+                    checked={roomTypeData.is_active !== false}
+                    onChange={() => handleChange("is_active", true)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="ml-2 text-green-600 font-medium">Ativo (Disponível para reservas)</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="status"
+                    checked={roomTypeData.is_active === false}
+                    onChange={() => handleChange("is_active", false)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="ml-2 text-red-600 font-medium">Inativo (Indisponível)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Mensagem de Erro */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-red-600">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Ações */}
+        <div className="flex justify-between items-center bg-white rounded-lg shadow-lg p-6">
+          <div className="text-sm text-gray-500">
+            * Campos obrigatórios
+          </div>
+          
+          <div className="flex space-x-4">
+            <button
+              onClick={handleCancel}
+              className="px-6 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+            >
+              Cancelar
+            </button>
+            
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? (
+                <>
+                  <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                  Salvando...
+                </>
+              ) : (
+                roomTypeId ? "Atualizar Tipo de Quarto" : "Criar Tipo de Quarto"
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

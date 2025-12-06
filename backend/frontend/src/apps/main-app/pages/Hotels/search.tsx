@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Button } from "@/shared/components/ui/button";
@@ -7,9 +7,8 @@ import { Input } from "@/shared/components/ui/input";
 import { ArrowLeft, Search, Star, MapPin } from "lucide-react";
 import PageHeader from "@/shared/components/PageHeader";
 import MobileNavigation from "@/shared/components/MobileNavigation";
-
-// ✅ URL absoluta da API
-const API_BASE_URL = 'http://localhost:8000';
+import { useHotelSearch } from "@/shared/hooks/useHotelSearch";
+import { formatPrice } from "@/shared/lib/api-utils"; // ✅ CORREÇÃO: Importar do lugar correto
 
 export default function HotelSearchPage() {
   const [, setLocation] = useLocation();
@@ -21,55 +20,81 @@ export default function HotelSearchPage() {
   });
   const [hasSearched, setHasSearched] = useState(false);
   const [accommodations, setAccommodations] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  
+  // 🔥 USANDO NOSSO NOVO HOOK COM MIGRAÇÃO v1 → v2
+  const { search, loading, error, results } = useHotelSearch();
+  const isLoading = loading;
 
-  // ✅ FUNÇÃO SIMPLIFICADA - sem React Query
+  // ✅ FUNÇÃO MIGRADA - usando nosso serviço com fallback automático
   const handleSearch = async () => {
     if (!searchParams.location.trim()) {
       alert('Por favor, informe uma localização para buscar');
       return;
     }
 
-    console.log('🎯 [FRONTEND] Iniciando busca por:', searchParams.location);
+    console.log('🎯 [FRONTEND MIGRADO] Iniciando busca por:', searchParams.location);
     
-    setIsLoading(true);
-    setError(null);
     setHasSearched(true);
+    setAccommodations([]); // Limpar resultados anteriores
 
     try {
-      const queryParams = new URLSearchParams();
-      queryParams.append('address', searchParams.location);
-      queryParams.append('isAvailable', 'true');
-      
-      if (searchParams.checkIn) queryParams.append('checkIn', searchParams.checkIn);
-      if (searchParams.checkOut) queryParams.append('checkOut', searchParams.checkOut);
-      if (searchParams.guests) queryParams.append('guests', searchParams.guests.toString());
+      // 🔥 CHAMANDO NOSSO SERVIÇO UNIFICADO (v2 com fallback para v1)
+      const result = await search({
+        location: searchParams.location,
+        checkIn: searchParams.checkIn || undefined,
+        checkOut: searchParams.checkOut || undefined,
+        guests: searchParams.guests
+      });
 
-      const url = `${API_BASE_URL}/api/hotels?${queryParams.toString()}`;
-      console.log('📡 [FRONTEND] Chamando API:', url);
+      console.log('✅ [MIGRADO] Resultado da busca:', {
+        source: result.source,  // 'v2' ou 'v1' ou 'error'
+        count: result.count,
+        success: result.success
+      });
 
-      const response = await fetch(url);
-      console.log('📊 [FRONTEND] Status:', response.status);
-
-      if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
+      if (result.success && result.data) {
+        // 🔄 ADAPTAR DADOS DO V2 PARA O FORMATO ESPERADO PELO COMPONENTE
+        const hotels = result.data.map((hotel: any) => {
+          if (result.source === 'v2') {
+            // Adaptar schema v2 para v1 (compatibilidade)
+            return {
+              id: hotel.hotel_id || hotel.id,
+              name: hotel.hotel_name || hotel.name,
+              description: hotel.description || '',
+              address: hotel.address || '',
+              locality: hotel.locality || '',
+              province: hotel.province || '',
+              // Converter preço de string para number
+              pricePerNight: hotel.min_price_per_night ? parseFloat(hotel.min_price_per_night) : 
+                            hotel.price_per_night ? parseFloat(hotel.price_per_night) : 0,
+              price: hotel.min_price_per_night ? parseFloat(hotel.min_price_per_night) : 
+                     hotel.price || 0,
+              rating: 4.0, // Rating não existe no v2, usar default
+              type: hotel.available_room_types?.[0]?.room_type_name || 'Hotel',
+              isAvailable: true, // Assumir disponível se retornou na busca
+              amenities: hotel.amenities || [],
+              images: hotel.images || []
+            };
+          }
+          // Se for v1, usar como está (compatibilidade)
+          return {
+            ...hotel,
+            pricePerNight: hotel.pricePerNight || hotel.price || 0,
+            price: hotel.price || hotel.pricePerNight || 0,
+            rating: hotel.rating || 4.0,
+            isAvailable: hotel.isAvailable !== false
+          };
+        });
+        
+        setAccommodations(hotels);
+        console.log(`🏨 [MIGRADO] ${hotels.length} hotéis encontrados (fonte: ${result.source})`);
+      } else {
+        // Se a busca falhou
+        console.warn('⚠️ Busca falhou:', result.error);
       }
-
-      const data = await response.json();
-      console.log('✅ [FRONTEND] Resposta da API:', data);
-
-      // ✅ Extrair hotéis da resposta
-      const hotels = data.data?.hotels || data.hotels || [];
-      setAccommodations(hotels);
-      
-      console.log(`🏨 [FRONTEND] ${hotels.length} hotéis encontrados`);
-
     } catch (err) {
-      console.error('❌ [FRONTEND] Erro:', err);
-      setError(err instanceof Error ? err.message : 'Erro desconhecido');
-    } finally {
-      setIsLoading(false);
+      console.error('❌ [MIGRADO] Erro inesperado:', err);
+      // O erro já é tratado pelo hook, mas podemos mostrar uma mensagem adicional
     }
   };
 
@@ -78,12 +103,13 @@ export default function HotelSearchPage() {
     setLocation(`/hotels/${accommodation.id}/book`);
   };
 
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('pt-MZ', {
-      style: 'currency',
-      currency: 'MZN'
-    }).format(price);
-  };
+  // ❌ REMOVER: A função formatPrice local está duplicada com a importada
+  // const formatPrice = (price: number) => {
+  //   return new Intl.NumberFormat('pt-MZ', {
+  //     style: 'currency',
+  //     currency: 'MZN'
+  //   }).format(price);
+  // };
 
   const renderStars = (rating: number) => {
     return Array.from({ length: 5 }, (_, i) => (
@@ -94,18 +120,23 @@ export default function HotelSearchPage() {
     ));
   };
 
-  // ✅ Teste manual SUPER SIMPLES
+  // ✅ Teste manual ATUALIZADO
   const testManualSearch = async () => {
-    console.log('🧪 [FRONTEND] Teste manual...');
+    console.log('🧪 [MIGRADO] Teste manual...');
     try {
-      const response = await fetch(`${API_BASE_URL}/api/hotels?address=Tofo&isAvailable=true`);
-      const data = await response.json();
-      const hotelCount = data.data?.hotels?.length || data.hotels?.length || 0;
-      console.log('🎯 Teste manual - Hotéis encontrados:', hotelCount);
-      alert(`✅ Teste manual: ${hotelCount} hotéis encontrados!`);
+      const result = await search({ location: 'Tofo', guests: 2 });
+      const hotelCount = result.data?.length || 0;
+      const source = result.source || 'desconhecido';
+      console.log('🎯 Teste manual - Resultado:', { count: hotelCount, source, success: result.success });
+      
+      if (result.success) {
+        alert(`✅ Teste manual: ${hotelCount} hotéis encontrados!\nFonte: ${source.toUpperCase()}\nAPI: ${source === 'v2' ? '/api/v2/hotels' : '/api/hotels'}`);
+      } else {
+        alert(`❌ Teste manual falhou: ${result.error || 'Erro desconhecido'}`);
+      }
     } catch (err) {
       console.error('❌ Teste manual - Erro:', err);
-      alert('❌ Erro no teste manual');
+      alert('❌ Erro no teste manual. Verifique o console.');
     }
   };
 
@@ -124,17 +155,31 @@ export default function HotelSearchPage() {
           Voltar ao Início
         </Button>
 
-        {/* Botões de teste */}
-        <div className="mb-4 flex gap-2">
+        {/* Botões de teste com INFO de migração */}
+        <div className="mb-4 flex gap-2 items-center">
           <Button 
             variant="outline" 
             onClick={testManualSearch}
             size="sm"
+            disabled={loading}
           >
-            🧪 Testar API
+            {loading ? '🔍 Testando...' : '🧪 Testar API Migrada'}
           </Button>
-          <div className="text-xs text-gray-500 flex items-center">
-            API: {API_BASE_URL}
+          <div className="text-xs text-gray-500 flex items-center gap-2">
+            <span>Status:</span>
+            <Badge variant={
+              results?.source === 'v2' ? "default" : 
+              results?.source === 'v1' ? "secondary" : "outline"
+            }>
+              {results?.source === 'v2' ? '✅ Usando API v2' : 
+               results?.source === 'v1' ? '🔄 Usando v1 (fallback)' : 
+               '⚪ Não testado'}
+            </Badge>
+            {results?.source && (
+              <span className="text-xs text-gray-400">
+                {results.count || 0} hotéis
+              </span>
+            )}
           </div>
         </div>
 
@@ -143,7 +188,12 @@ export default function HotelSearchPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Search className="w-5 h-5" />
-              Buscar Acomodações
+              Buscar Acomodações 
+              {results?.source && (
+                <Badge variant="outline" className="ml-2 text-xs">
+                  {results.source.toUpperCase()}
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -189,13 +239,49 @@ export default function HotelSearchPage() {
                 <Button 
                   onClick={handleSearch} 
                   className="w-full" 
-                  disabled={!searchParams.location.trim() || isLoading}
+                  disabled={!searchParams.location.trim() || loading}
                 >
-                  <Search className="w-4 h-4 mr-2" />
-                  {isLoading ? 'Buscando...' : 'Buscar'}
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Buscando...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4 mr-2" />
+                      Buscar
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
+            
+            {/* Info da migração */}
+            {results?.source && (
+              <div className="mt-4 p-3 rounded-lg border text-sm" style={{
+                backgroundColor: results.source === 'v2' ? '#f0f9ff' : '#fefce8',
+                borderColor: results.source === 'v2' ? '#bae6fd' : '#fef08a'
+              }}>
+                <div className="flex items-center gap-2 mb-1">
+                  {results.source === 'v2' ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                      <span className="font-medium text-green-700">✅ Usando API v2 (Nova)</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
+                      <span className="font-medium text-yellow-700">🔄 Usando API v1 (Fallback)</span>
+                    </>
+                  )}
+                </div>
+                <p className="text-gray-600 text-xs">
+                  {results.source === 'v2' 
+                    ? 'Sistema novo com busca inteligente e geolocalização' 
+                    : 'Sistema legado (v2 indisponível ou falhou)'}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -204,11 +290,18 @@ export default function HotelSearchPage() {
           <Card className="mb-6 border-blue-200 bg-blue-50">
             <CardContent className="pt-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div><strong>🔍 Buscando:</strong> {searchParams.location}</div>
+                <div>
+                  <strong>🔍 Buscando:</strong> {searchParams.location}
+                  {results?.source && (
+                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs">
+                      {results.source.toUpperCase()}
+                    </span>
+                  )}
+                </div>
                 <div>
                   <strong>Status:</strong> 
-                  <span className={isLoading ? 'text-orange-600' : 'text-green-600'}>
-                    {isLoading ? ' 🔄 Buscando...' : ' ✅ Completo'}
+                  <span className={loading ? 'text-orange-600' : 'text-green-600'}>
+                    {loading ? ' 🔄 Buscando...' : ' ✅ Completo'}
                   </span>
                 </div>
                 <div>
@@ -223,6 +316,14 @@ export default function HotelSearchPage() {
                     {error ? ' ❌ Sim' : ' ✅ Não'}
                   </span>
                 </div>
+                {results?.source === 'v2' && accommodations.length > 0 && (
+                  <div className="md:col-span-3">
+                    <strong>🎯 Features v2:</strong>
+                    <span className="text-xs text-blue-600 ml-2">
+                      Geolocalização • Preços dinâmicos • Quartos disponíveis
+                    </span>
+                  </div>
+                )}
               </div>
               
               {error && (
@@ -240,7 +341,12 @@ export default function HotelSearchPage() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold">
-                {isLoading ? 'Buscando...' : `Acomodações Disponíveis (${accommodations.length})`}
+                {loading ? 'Buscando...' : `Acomodações Disponíveis (${accommodations.length})`}
+                {results?.source && (
+                  <span className="ml-2 text-sm font-normal text-gray-500">
+                    via {results.source.toUpperCase()}
+                  </span>
+                )}
               </h2>
               {accommodations.length > 0 && (
                 <Badge variant="secondary">
@@ -249,10 +355,13 @@ export default function HotelSearchPage() {
               )}
             </div>
 
-            {isLoading && (
+            {loading && (
               <div className="flex justify-center items-center py-12">
                 <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" />
-                <span className="ml-3 text-gray-600">Buscando para "{searchParams.location}"...</span>
+                <span className="ml-3 text-gray-600">
+                  Buscando para "{searchParams.location}"...
+                  {results?.source && ` (${results.source})`}
+                </span>
               </div>
             )}
 
@@ -273,18 +382,22 @@ export default function HotelSearchPage() {
               </Card>
             )}
 
-            {!isLoading && !error && accommodations.length === 0 && (
+            {!loading && !error && accommodations.length === 0 && (
               <Card className="border-yellow-200 bg-yellow-50">
                 <CardContent className="pt-6 text-center">
                   <p className="text-yellow-800 font-semibold">🏨 Nenhuma acomodação encontrada</p>
                   <p className="text-yellow-600 text-sm mt-2">
                     Para "{searchParams.location}"
+                    {results?.source && ` usando ${results.source.toUpperCase()}`}
+                  </p>
+                  <p className="text-yellow-500 text-xs mt-2">
+                    💡 Tente: Maputo, Tofo, Vilankulo, Inhambane
                   </p>
                 </CardContent>
               </Card>
             )}
 
-            {!isLoading && accommodations.length > 0 && (
+            {!loading && accommodations.length > 0 && (
               <div className="space-y-4">
                 {accommodations.map((accommodation: any) => (
                   <Card key={accommodation.id} className="hover:shadow-lg transition-shadow">
@@ -314,6 +427,21 @@ export default function HotelSearchPage() {
                           {accommodation.description && (
                             <p className="text-gray-600 text-sm mb-3 line-clamp-2">{accommodation.description}</p>
                           )}
+                          
+                          {accommodation.amenities && accommodation.amenities.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {accommodation.amenities.slice(0, 5).map((amenity: string, index: number) => (
+                                <Badge key={index} variant="secondary" className="text-xs">
+                                  {amenity}
+                                </Badge>
+                              ))}
+                              {accommodation.amenities.length > 5 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{accommodation.amenities.length - 5}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {/* Disponibilidade e Preço */}
@@ -322,16 +450,21 @@ export default function HotelSearchPage() {
                             <div className="text-sm text-gray-500">Disponibilidade</div>
                             <div className="text-lg font-bold mb-2">
                               {accommodation.isAvailable ? (
-                                <Badge className="bg-green-100 text-green-700">Disponível</Badge>
+                                <Badge className="bg-green-100 text-green-700">✅ Disponível</Badge>
                               ) : (
-                                <Badge className="bg-red-100 text-red-700">Indisponível</Badge>
+                                <Badge className="bg-red-100 text-red-700">⛔ Indisponível</Badge>
                               )}
                             </div>
                           </div>
                           <div className="text-2xl font-bold text-blue-600">
-                            {accommodation.pricePerNight ? formatPrice(accommodation.pricePerNight) : 'Sob consulta'}
+                            {accommodation.pricePerNight > 0 ? formatPrice(accommodation.pricePerNight) : 'Sob consulta'}
                           </div>
                           <div className="text-sm text-gray-500">por noite</div>
+                          {results?.source === 'v2' && accommodation.pricePerNight && (
+                            <div className="text-xs text-green-600 mt-1">
+                              💰 Preço dinâmico v2
+                            </div>
+                          )}
                         </div>
 
                         {/* Ação */}
@@ -341,8 +474,22 @@ export default function HotelSearchPage() {
                             className="w-full bg-blue-600 hover:bg-blue-700"
                             disabled={!accommodation.isAvailable}
                           >
-                            {accommodation.isAvailable ? 'Reservar' : 'Indisponível'}
+                            {accommodation.isAvailable ? (
+                              <>
+                                <span>Reservar</span>
+                                {results?.source === 'v2' && (
+                                  <span className="ml-1 text-xs">(v2)</span>
+                                )}
+                              </>
+                            ) : (
+                              'Indisponível'
+                            )}
                           </Button>
+                          <p className="text-xs text-gray-500 mt-2">
+                            {results?.source === 'v2' 
+                              ? 'Reserva com validação em tempo real' 
+                              : 'Reserva básica'}
+                          </p>
                         </div>
                       </div>
                     </CardContent>
@@ -358,7 +505,18 @@ export default function HotelSearchPage() {
             <CardContent>
               <Search className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-700 mb-2">Encontre a acomodação perfeita</h3>
-              <p className="text-gray-500">Digite uma localização e clique em Buscar para começar</p>
+              <p className="text-gray-500 mb-4">Sistema migrado para nova API v2 com fallback automático</p>
+              <div className="flex gap-2 justify-center">
+                <Badge variant="outline" className="text-xs">
+                  ✅ API v2: Busca inteligente
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  🔄 Fallback: API v1 automático
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  🎯 Preços dinâmicos
+                </Badge>
+              </div>
             </CardContent>
           </Card>
         )}

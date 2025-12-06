@@ -90,32 +90,39 @@ export interface HotelFormData {
 // Props para o wizard
 export interface HotelCreationWizardProps {
   open: boolean;
-  onCancel?: () => void; // substituir onClose
-  onSuccess?: (hotelId: string) => void; // substituir onSubmit
+  onCancel?: () => void;
+  onSuccess?: (hotelId: string) => void;
   mode?: 'create' | 'edit';
-  initialData?: Partial<HotelFormData>; // ← CORRIGIDO: Partial para compatibilidade
+  initialData?: Partial<HotelFormData>;
   hotelId?: string;
+  autoSave?: boolean;
 }
 
-// Props do ReviewAndSubmit - CORRIGIDO
+// Props do ReviewAndSubmit - COM onNext e onBack OPCIONAIS
 export interface ReviewAndSubmitProps {
   formData: HotelFormData;
   updateFormData: (newData: Partial<HotelFormData>) => void;
-  onNext: () => void;
-  onBack: () => void;
+  onNext?: () => void;  // ✅ OPCIONAL na etapa de revisão
+  onBack?: () => void;  // ✅ OPCIONAL na etapa de revisão
   mode: 'create' | 'edit';
   isSubmitting: boolean;
-  onSubmit: () => Promise<void>; // ← CORRIGIDO: onSubmit em vez de onSuccess
+  onSubmit: () => Promise<void>;
 }
 
-// Props compartilhadas para todos os componentes de etapa
-export interface HotelWizardStepProps {
+// Props para componentes de etapa COM onNext e onBack OBRIGATÓRIOS
+export interface HotelBasicInfoProps {
   formData: HotelFormData;
   updateFormData: (newData: Partial<HotelFormData>) => void;
-  onNext: () => void;
-  onBack: () => void;
-  mode: 'create' | 'edit';
+  onNext: () => void;  // ✅ OBRIGATÓRIO para etapas regulares
+  onBack: () => void;  // ✅ OBRIGATÓRIO para etapas regulares
+  mode?: 'create' | 'edit';
 }
+
+// Alias para os outros componentes com props consistentes
+export interface HotelLocationProps extends HotelBasicInfoProps {}
+export interface HotelAmenitiesProps extends HotelBasicInfoProps {}
+export interface HotelRoomsProps extends HotelBasicInfoProps {}
+export interface HotelImagesProps extends HotelBasicInfoProps {}
 
 // Interface para sugestões de localização
 export interface LocationSuggestion {
@@ -126,31 +133,6 @@ export interface LocationSuggestion {
   lat: number;
   lng: number;
   type: string;
-}
-
-// Props específicas para o componente de localização
-export interface HotelLocationProps extends HotelWizardStepProps {
-  // Pode adicionar props específicas se necessário
-}
-
-// Props específicas para o componente de quartos
-export interface HotelRoomsProps extends HotelWizardStepProps {
-  // Pode adicionar props específicas se necessário
-}
-
-// Props específicas para o componente de informações básicas
-export interface HotelBasicInfoProps extends HotelWizardStepProps {
-  // Pode adicionar props específicas se necessário
-}
-
-// Props específicas para o componente de comodidades
-export interface HotelAmenitiesProps extends HotelWizardStepProps {
-  // Pode adicionar props específicas se necessário
-}
-
-// Props específicas para o componente de imagens
-export interface HotelImagesProps extends HotelWizardStepProps {
-  // Pode adicionar props específicas se necessário
 }
 
 // ✅ FUNÇÃO ATUALIZADA: criar dados iniciais do formulário (SEM district)
@@ -242,3 +224,52 @@ export const prepareHotelForBackend = (formData: HotelFormData) => {
     lng: formData.lng || formData.location?.lng
   };
 };
+
+// 🆕 Tipo para o retorno do hook useHotelForm
+export interface UseHotelFormReturn {
+  formData: HotelFormData;
+  updateFormData: (newData: Partial<HotelFormData>) => void;
+  isSubmitting: boolean;
+  isLoading: boolean;
+  error: string;
+  success: string;
+  isDirty: boolean;
+  completedSteps: number[];
+  validateCurrentStep: (step: number, markIfValid?: boolean) => boolean;
+  validateAllSteps: () => boolean;
+  submitForm: (onSuccess?: (hotelId: string) => void) => Promise<any>;
+  loadHotelData: (forceReload?: boolean) => Promise<HotelFormData | undefined>;
+  saveDraft: () => void;
+  loadDraft: () => boolean;
+  clearDraft: () => void;
+  markStepAsCompleted: (stepIndex: number) => void;
+  unmarkStepAsCompleted: (stepIndex: number) => void;
+  reset: () => void;
+}
+
+// 🆕 Tipo para o retorno do hook useStepNavigation
+export interface UseStepNavigationReturn {
+  activeStep: number;
+  visitedSteps: number[];
+  handleNext: () => void;
+  handleBack: () => void;
+  goToStep: (step: number, shouldValidate?: boolean) => boolean;
+  jumpToStep: (step: number, validateCurrent?: boolean) => boolean;
+  reset: () => void;
+  isStepVisited: (step: number) => boolean;
+  canGoToStep: (step: number) => boolean;
+  isFirstStep: boolean;
+  isLastStep: boolean;
+  canGoNext: boolean;
+  canGoBack: boolean;
+  totalSteps: number;
+}
+
+// 🆕 Helper type para facilitar a tipagem do switch case
+export type HotelWizardComponentProps = 
+  | HotelBasicInfoProps 
+  | HotelLocationProps 
+  | HotelAmenitiesProps 
+  | HotelRoomsProps 
+  | HotelImagesProps 
+  | ReviewAndSubmitProps;

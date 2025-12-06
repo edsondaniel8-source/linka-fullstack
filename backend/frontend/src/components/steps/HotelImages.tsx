@@ -1,183 +1,196 @@
-import React from 'react';
-import { HotelFormData } from '../hotel-wizard/HotelCreationWizard';
+// src/components/steps/HotelImages.tsx
+import React, { useCallback, useState } from 'react';
+import { HotelImagesProps } from '../hotel-wizard/types';
 
-interface HotelImagesProps {
-  formData: HotelFormData;
-  updateFormData: (data: Partial<HotelFormData>) => void;
-  onNext: () => void;
-  onBack: () => void;
-}
-
-const HotelImages: React.FC<HotelImagesProps> = ({
-  formData,
-  updateFormData
+const HotelImages: React.FC<HotelImagesProps> = ({ 
+  formData, 
+  updateFormData,
+  onNext,
+  onBack,
+  mode 
 }) => {
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files) {
-      const newImages = Array.from(files);
-      updateFormData({ images: [...formData.images, ...newImages] });
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      const newImages = [...(formData.images || []), ...files];
+      updateFormData({ images: newImages });
     }
   };
 
-  const removeImage = (index: number) => {
-    const newImages = formData.images.filter((_, i) => i !== index);
+  const handleRemoveImage = (index: number) => {
+    const newImages = [...(formData.images || [])];
+    newImages.splice(index, 1);
     updateFormData({ images: newImages });
   };
 
-  // Estilos usando React.CSSProperties
-  const styles: { [key: string]: React.CSSProperties } = {
-    container: {
-      marginBottom: '2rem'
-    },
-    title: {
-      marginBottom: '0.5rem',
-      fontSize: '1.5rem',
-      fontWeight: 'bold'
-    },
-    description: {
-      color: '#666',
-      marginBottom: '2rem'
-    },
-    uploadSection: {
-      marginBottom: '2rem'
-    },
-    uploadLabel: {
-      display: 'block',
-      border: '2px dashed #ddd',
-      borderRadius: '8px',
-      padding: '2rem',
-      textAlign: 'center',
-      cursor: 'pointer',
-      transition: 'border-color 0.3s'
-    },
-    uploadLabelHover: {
-      borderColor: '#1976d2'
-    },
-    uploadContent: {
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center'
-    },
-    uploadIcon: {
-      fontSize: '2rem',
-      color: '#1976d2',
-      display: 'block',
-      marginBottom: '0.5rem'
-    },
-    uploadText: {
-      margin: '0.25rem 0'
-    },
-    uploadSubtext: {
-      fontSize: '0.875rem',
-      color: '#666',
-      margin: 0
-    },
-    imagesGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-      gap: '1rem',
-      marginBottom: '1rem'
-    },
-    imageItem: {
-      position: 'relative',
-      borderRadius: '8px',
-      overflow: 'hidden'
-    },
-    imagePreview: {
-      width: '100%',
-      height: '150px',
-      objectFit: 'cover',
-      borderRadius: '8px'
-    },
-    removeImageButton: {
-      position: 'absolute',
-      top: '0.5rem',
-      right: '0.5rem',
-      background: 'rgba(0, 0, 0, 0.7)',
-      color: 'white',
-      border: 'none',
-      borderRadius: '50%',
-      width: '30px',
-      height: '30px',
-      cursor: 'pointer',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '1.2rem',
-      fontWeight: 'bold'
-    },
-    emptyState: {
-      textAlign: 'center',
-      color: '#666',
-      padding: '2rem'
-    },
-    hiddenInput: {
-      display: 'none'
-    }
+  const handleRemoveExistingImage = (index: number) => {
+    const newExistingImages = [...(formData.existingImages || [])];
+    newExistingImages.splice(index, 1);
+    updateFormData({ existingImages: newExistingImages });
   };
 
-  return (
-    <div style={styles.container}>
-      <h2 style={styles.title}>Imagens do Hotel</h2>
-      
-      <p style={styles.description}>
-        Adicione fotos do seu estabelecimento para atrair mais hóspedes
-      </p>
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
 
-      <div style={styles.uploadSection}>
-        <label 
-          htmlFor="image-upload" 
-          style={styles.uploadLabel}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = styles.uploadLabelHover.borderColor as string;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = '#ddd';
-          }}
-        >
-          <div style={styles.uploadContent}>
-            <span style={styles.uploadIcon}>+</span>
-            <p style={styles.uploadText}>Clique para adicionar imagens</p>
-            <small style={styles.uploadSubtext}>
-              Formatos suportados: JPG, PNG, WEBP (Máx. 5MB cada)
-            </small>
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const files = Array.from(e.dataTransfer.files).filter(file => 
+      file.type.startsWith('image/')
+    );
+    
+    if (files.length > 0) {
+      const newImages = [...(formData.images || []), ...files];
+      updateFormData({ images: newImages });
+    }
+  }, [formData.images, updateFormData]);
+
+  const getImageUrl = (image: File | string) => {
+    if (typeof image === 'string') {
+      return image;
+    }
+    return URL.createObjectURL(image);
+  };
+
+  const totalImages = (formData.images?.length || 0) + (formData.existingImages?.length || 0);
+
+  return (
+    <div className="step-images">
+      <h3>Imagens do Hotel</h3>
+      <p className="step-description">
+        Adicione imagens do seu hotel. Use fotos de alta qualidade que mostrem os quartos, áreas comuns, restaurante, etc.
+        Recomendamos pelo menos 5 imagens.
+      </p>
+      
+      {/* Área de upload */}
+      <div 
+        className={`upload-area ${isDragging ? 'dragging' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <input
+          type="file"
+          id="image-upload"
+          multiple
+          accept="image/*"
+          onChange={handleImageSelect}
+          style={{ display: 'none' }}
+        />
+        <label htmlFor="image-upload" className="upload-label">
+          <div className="upload-icon">📷</div>
+          <div className="upload-text">
+            <strong>Clique para selecionar imagens</strong>
+            <span>ou arraste e solte aqui</span>
           </div>
-          <input
-            id="image-upload"
-            type="file"
-            multiple
-            accept="image/*"
-            onChange={handleImageUpload}
-            style={styles.hiddenInput}
-          />
+          <div className="upload-hint">
+            Formatos suportados: JPG, PNG, WebP | Tamanho máximo: 5MB por imagem
+          </div>
         </label>
       </div>
 
-      {formData.images.length > 0 ? (
-        <div style={styles.imagesGrid}>
-          {formData.images.map((image, index) => (
-            <div key={index} style={styles.imageItem}>
-              <img
-                src={URL.createObjectURL(image)}
-                alt={`Hotel image ${index + 1}`}
-                style={styles.imagePreview}
+      {/* Contador de imagens */}
+      <div className="images-counter">
+        <strong>Total de Imagens:</strong> {totalImages}
+        <span className="counter-breakdown">
+          (Novas: {formData.images?.length || 0}, Existentes: {formData.existingImages?.length || 0})
+        </span>
+      </div>
+
+      {/* Grid de imagens */}
+      {totalImages > 0 ? (
+        <div className="images-grid">
+          {/* Imagens existentes (se estiver editando) */}
+          {formData.existingImages?.map((image, index) => (
+            <div key={`existing-${index}`} className="image-item">
+              <img 
+                src={image} 
+                alt={`Hotel ${index}`}
+                className="image-preview"
               />
               <button
-                onClick={() => removeImage(index)}
-                style={styles.removeImageButton}
+                type="button"
+                onClick={() => handleRemoveExistingImage(index)}
+                className="image-remove"
                 title="Remover imagem"
               >
                 ×
               </button>
+              <div className="image-status">Existente</div>
+            </div>
+          ))}
+
+          {/* Novas imagens */}
+          {formData.images?.map((image, index) => (
+            <div key={`new-${index}`} className="image-item">
+              <img 
+                src={getImageUrl(image)} 
+                alt={`Novo ${index}`}
+                className="image-preview"
+              />
+              <button
+                type="button"
+                onClick={() => handleRemoveImage(index)}
+                className="image-remove"
+                title="Remover imagem"
+              >
+                ×
+              </button>
+              <div className="image-status">Novo</div>
+              {typeof image !== 'string' && (
+                <div className="image-info">
+                  {image.name} ({(image.size / 1024 / 1024).toFixed(2)} MB)
+                </div>
+              )}
             </div>
           ))}
         </div>
       ) : (
-        <div style={styles.emptyState}>
-          <p>Nenhuma imagem adicionada ainda.</p>
+        <div className="no-images">
+          <p>Nenhuma imagem adicionada ainda. Adicione pelo menos uma imagem do hotel.</p>
         </div>
       )}
+
+      {/* Dicas */}
+      <div className="images-tips">
+        <h4>💡 Dicas para boas imagens:</h4>
+        <ul>
+          <li>Use boa iluminação natural</li>
+          <li>Mostre diferentes áreas do hotel</li>
+          <li>Inclua fotos dos quartos, banheiros e áreas comuns</li>
+          <li>Use imagens em alta resolução</li>
+          <li>Evite imagens borradas ou escuras</li>
+        </ul>
+      </div>
+
+      {/* Botões de navegação */}
+      <div className="step-navigation">
+        <button
+          type="button"
+          onClick={onBack}
+          className="nav-button nav-button-secondary"
+        >
+          Voltar
+        </button>
+        <button
+          type="button"
+          onClick={onNext}
+          className="nav-button nav-button-primary"
+          disabled={totalImages === 0}
+        >
+          {totalImages >= 5 ? 'Excelente! Próximo' : 'Próximo'}
+        </button>
+      </div>
     </div>
   );
 };

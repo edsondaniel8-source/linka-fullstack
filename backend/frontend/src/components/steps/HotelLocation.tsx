@@ -1,14 +1,8 @@
+// src/components/steps/HotelLocation.tsx
 import React, { useState, useEffect } from 'react';
-import { HotelFormData } from '../hotel-wizard/types';
+import { HotelLocationProps } from '../hotel-wizard/types';
 import LocationAutocomplete from '@/shared/components/LocationAutocomplete';
 import { LocationSuggestion } from '../../services/locationsService';
-
-interface HotelLocationProps {
-  formData: HotelFormData;
-  updateFormData: (data: Partial<HotelFormData>) => void;
-  onNext: () => void;
-  onBack: () => void;
-}
 
 const HotelLocation: React.FC<HotelLocationProps> = ({
   formData,
@@ -34,11 +28,11 @@ const HotelLocation: React.FC<HotelLocationProps> = ({
       locality: location.name,        // ✅ EXISTE NO BANCO
       province: location.province,    // ✅ EXISTE NO BANCO
       country: 'Moçambique',          // ✅ EXISTE NO BANCO
-      // ✅ Manter city e state vazios (existem na interface mas não no banco)
-      city: '',
-      state: '',
+      city: location.name,           // Usar localidade como cidade
+      state: location.province,      // Usar província como estado
       lat: location.lat,
-      lng: location.lng
+      lng: location.lng,
+      location: { lat: location.lat, lng: location.lng } // ✅ Objeto location completo
     });
 
     setLocalAddress(`${location.name}, ${location.district}, ${location.province}`);
@@ -52,14 +46,21 @@ const HotelLocation: React.FC<HotelLocationProps> = ({
     // Se usuário apagar manualmente, limpar outros campos
     if (!value.trim()) {
       updateFormData({
+        address: '',
         locality: '',
         province: '',
         city: '',
         state: '',
+        country: '',
         lat: undefined,
-        lng: undefined
+        lng: undefined,
+        location: undefined
       });
     }
+  };
+
+  const handleManualFieldChange = (field: keyof typeof formData, value: string) => {
+    updateFormData({ [field]: value });
   };
 
   const handleNext = () => {
@@ -84,209 +85,119 @@ const HotelLocation: React.FC<HotelLocationProps> = ({
     onNext();
   };
 
-  // Estilos usando React.CSSProperties
-  const styles: { [key: string]: React.CSSProperties } = {
-    container: {
-      marginBottom: '2rem'
-    },
-    title: {
-      marginBottom: '0.5rem',
-      fontSize: '1.5rem',
-      fontWeight: 'bold',
-      textAlign: 'center'
-    },
-    description: {
-      color: '#666',
-      marginBottom: '2rem',
-      textAlign: 'center'
-    },
-    formGrid: {
-      display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
-      gap: '1rem',
-      maxWidth: '600px',
-      margin: '0 auto'
-    },
-    formField: {
-      display: 'flex',
-      flexDirection: 'column'
-    },
-    fullWidth: {
-      gridColumn: '1 / -1'
-    },
-    label: {
-      marginBottom: '0.5rem',
-      fontWeight: 'bold',
-      fontSize: '0.875rem',
-      color: '#333'
-    },
-    input: {
-      padding: '0.75rem',
-      border: '1px solid #ddd',
-      borderRadius: '4px',
-      fontSize: '1rem',
-      fontFamily: 'inherit'
-    },
-    error: {
-      backgroundColor: '#ffebee',
-      color: '#c62828',
-      border: '1px solid #ffcdd2',
-      padding: '1rem',
-      borderRadius: '4px',
-      marginBottom: '1rem'
-    },
-    locationPreview: {
-      padding: '1rem',
-      backgroundColor: '#f0f9ff',
-      border: '1px solid #bae6fd',
-      borderRadius: '4px',
-      marginTop: '1rem'
-    },
-    locationPreviewTitle: {
-      fontWeight: 'bold',
-      color: '#0369a1',
-      marginBottom: '0.25rem'
-    },
-    locationPreviewText: {
-      fontSize: '0.875rem',
-      color: '#0c4a6e'
-    },
-    navigation: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      marginTop: '2rem',
-      maxWidth: '600px',
-      margin: '0 auto'
-    },
-    button: {
-      padding: '0.75rem 1.5rem',
-      border: 'none',
-      borderRadius: '4px',
-      cursor: 'pointer',
-      fontSize: '1rem',
-      transition: 'all 0.3s ease'
-    },
-    buttonPrimary: {
-      background: '#1976d2',
-      color: 'white'
-    },
-    buttonSecondary: {
-      background: '#f5f5f5',
-      color: '#333',
-      border: '1px solid #ddd'
-    }
-  };
-
   return (
-    <div style={styles.container}>
-      <h2 style={styles.title}>Localização do Hotel</h2>
+    <div className="step-location">
+      <h3>Localização do Hotel</h3>
       
-      <p style={styles.description}>
-        Informe a localização completa do seu estabelecimento
-      </p>
+      <div className="form-group">
+        <label htmlFor="location-autocomplete">
+          Localização Completa *
+          <span className="field-hint"> (Comece a digitar e selecione uma opção da lista)</span>
+        </label>
+        
+        <LocationAutocomplete
+          id="location-autocomplete"
+          placeholder="Digite o nome da cidade, vila ou localidade..."
+          value={localAddress}
+          onChange={handleAddressChange}
+          onLocationSelect={handleLocationSelect}
+          data-testid="location-autocomplete"
+        />
+      </div>
 
-      {locationError && (
-        <div style={styles.error}>
-          ❌ {locationError}
-        </div>
-      )}
-
-      <div style={styles.formGrid}>
-        <div style={{ ...styles.formField, ...styles.fullWidth }}>
-          <label htmlFor="location-autocomplete" style={styles.label}>
-            Localização Completa *
-          </label>
-          
-          <LocationAutocomplete
-            id="location-autocomplete"
-            placeholder="Digite o nome da cidade, vila ou localidade..."
-            value={localAddress}
-            onChange={handleAddressChange}
-            onLocationSelect={handleLocationSelect}
-            data-testid="location-autocomplete"
-          />
-          
-          <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.5rem' }}>
-            💡 Comece a digitar e selecione uma opção da lista
-          </p>
-        </div>
-
-        {/* ✅ CORREÇÃO: Campos de visualização com todos os campos necessários */}
-        <div style={styles.formField}>
-          <label style={styles.label}>Localidade</label>
+      <div className="form-grid">
+        <div className="form-group">
+          <label htmlFor="locality">Localidade *</label>
           <input
+            id="locality"
             type="text"
             value={formData.locality || ''}
-            readOnly
-            style={{ ...styles.input, backgroundColor: '#f9f9f9', color: '#666' }}
-            placeholder="Preenchido automaticamente"
+            onChange={(e) => handleManualFieldChange('locality', e.target.value)}
+            placeholder="Cidade ou localidade"
+            required
           />
         </div>
-
-        <div style={styles.formField}>
-          <label style={styles.label}>Província</label>
+        
+        <div className="form-group">
+          <label htmlFor="province">Província *</label>
           <input
+            id="province"
             type="text"
             value={formData.province || ''}
-            readOnly
-            style={{ ...styles.input, backgroundColor: '#f9f9f9', color: '#666' }}
-            placeholder="Preenchido automaticamente"
+            onChange={(e) => handleManualFieldChange('province', e.target.value)}
+            placeholder="Província"
+            required
           />
         </div>
-
-        <div style={styles.formField}>
-          <label style={styles.label}>País</label>
+        
+        <div className="form-group">
+          <label htmlFor="country">País *</label>
           <input
+            id="country"
             type="text"
             value={formData.country || ''}
-            readOnly
-            style={{ ...styles.input, backgroundColor: '#f9f9f9', color: '#666' }}
-            placeholder="Preenchido automaticamente"
+            onChange={(e) => handleManualFieldChange('country', e.target.value)}
+            placeholder="País"
+            required
           />
         </div>
-
-        <div style={styles.formField}>
-          <label htmlFor="zipCode" style={styles.label}>CEP</label>
+        
+        <div className="form-group">
+          <label htmlFor="zipCode">Código Postal</label>
           <input
             id="zipCode"
             type="text"
             value={formData.zipCode || ''}
-            onChange={(e) => updateFormData({ zipCode: e.target.value })}
-            placeholder="Ex: 01310-100"
-            style={styles.input}
+            onChange={(e) => handleManualFieldChange('zipCode', e.target.value)}
+            placeholder="Código Postal"
           />
-        </div>
-
-        {/* ✅ CORREÇÃO: Preview da localização com campos corretos */}
-        {formData.lat && formData.lng && (
-          <div style={{ ...styles.locationPreview, ...styles.fullWidth }}>
-            <div style={styles.locationPreviewTitle}>
-              ✅ Localização confirmada
-            </div>
-            <div style={styles.locationPreviewText}>
-              <strong>{formData.locality}</strong>
-              {formData.province && `, ${formData.province}`}
-              {formData.country && `, ${formData.country}`}
-              <br />
-              <small>Coordenadas: {formData.lat?.toFixed(4)}, {formData.lng?.toFixed(4)}</small>
-            </div>
-          </div>
-        )}
-
-        {/* Campos hidden para debug */}
-        <div style={{ ...styles.fullWidth, fontSize: '0.75rem', color: '#999', marginTop: '1rem' }}>
-          Debug: {formData.lat ? `Coordenadas OK (${formData.lat}, ${formData.lng})` : 'Aguardando coordenadas...'}
-          {formData.locality && ` | Localidade: ${formData.locality}`}
-          {formData.province && ` | Província: ${formData.province}`}
         </div>
       </div>
 
-      {/* Navegação */}
-      <div style={styles.navigation}>
+      {/* Preview da localização */}
+      {formData.lat && formData.lng && (
+        <div className="location-coordinates">
+          <div className="location-preview">
+            <div className="preview-title">
+              ✅ Localização confirmada
+            </div>
+            <div className="preview-details">
+              <strong>{formData.locality}</strong>
+              {formData.province && `, ${formData.province}`}
+              {formData.country && `, ${formData.country}`}
+            </div>
+            <div className="coordinates">
+              <small>Coordenadas: {formData.lat?.toFixed(6)}, {formData.lng?.toFixed(6)}</small>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mensagem de erro */}
+      {locationError && (
+        <div className="alert alert-error">
+          ❌ {locationError}
+        </div>
+      )}
+
+      {/* Informações de debug (apenas desenvolvimento) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="debug-info">
+          <small>
+            Debug: {formData.lat ? `Coordenadas OK (${formData.lat}, ${formData.lng})` : 'Aguardando coordenadas...'}
+            {formData.locality && ` | Localidade: ${formData.locality}`}
+            {formData.province && ` | Província: ${formData.province}`}
+            {formData.location && ` | Location obj: ${JSON.stringify(formData.location)}`}
+          </small>
+        </div>
+      )}
+
+      {/* Botões de navegação */}
+      <div className="step-navigation">
         <button
           type="button"
           onClick={onBack}
-          style={{ ...styles.button, ...styles.buttonSecondary }}
+          className="nav-button nav-button-secondary"
         >
           Voltar
         </button>
@@ -294,7 +205,7 @@ const HotelLocation: React.FC<HotelLocationProps> = ({
         <button
           type="button"
           onClick={handleNext}
-          style={{ ...styles.button, ...styles.buttonPrimary }}
+          className="nav-button nav-button-primary"
         >
           Próximo
         </button>

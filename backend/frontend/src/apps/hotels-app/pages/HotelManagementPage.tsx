@@ -1,215 +1,453 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useLocation } from 'wouter';
-import { accommodationService } from '@/shared/lib/accommodationService';
 import { useAuth } from '@/shared/hooks/useAuth';
 import AddRoomForm from '../../../components/hotel-wizard/RoomsForm';
-import { Accommodation } from '@/shared/lib/accommodationService';
 
-// ⭐ INTERFACE CORRIGIDA
-interface ExtendedAccommodation extends Omit<Accommodation, 'availableRooms'> {
-  hotelId?: string;
-  address?: string;
-  maxGuests?: number;
-  pricePerNight?: number;
-  availableRooms?: number;
+// ✅✅✅ PRODUTO FINAL: Usar apenas apiService
+import { apiService } from '../../../services/api';
+
+// ✅✅✅ INTERFACES CENTRALIZADAS
+import { Hotel, RoomType, HotelOperationResponse, RoomTypeListResponse } from '@/types/index';
+
+// ✅✅✅ TIPO PARA ADICIONAR STATUS (não existe na interface original)
+interface HotelWithStatus extends Hotel {
+  status?: 'active' | 'inactive';
 }
 
-// ⭐ Interface para Room (baseado na tabela hotelRooms)
-interface HotelRoom {
-  id: string;
-  accommodationId: string;
-  roomNumber: string;
-  roomType: string;
-  description?: string;
-  pricePerNight: number;
-  maxOccupancy: number;
-  bedType?: string;
-  bedCount: number;
-  hasPrivateBathroom: boolean;
-  hasAirConditioning: boolean;
-  hasWifi: boolean;
-  hasTV: boolean;
-  hasBalcony: boolean;
-  hasKitchen: boolean;
-  roomAmenities: string[];
-  images: string[];
-  isAvailable: boolean;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-}
+// ✅✅✅ HELPER: Garantir valores padrão para RoomType
+const ensureRoomTypeDefaults = (room: RoomType): RoomType & {
+  price_per_night: number;
+  amenities: string[];
+  available_units: number;
+  max_occupancy: number;
+} => ({
+  ...room,
+  price_per_night: room.price_per_night || room.base_price || 0,
+  amenities: room.amenities || [],
+  available_units: room.available_units || room.total_units || 0,
+  max_occupancy: room.max_occupancy || room.base_occupancy || 2
+});
 
-const HotelManagementPage: React.FC = () => {
-  const { hotelId } = useParams<{ hotelId: string }>();
-  const [, setLocation] = useLocation();
-  const { user, token: authToken, loading: authLoading } = useAuth();
-
-  // ⭐⭐ DEBUG TEMPORÁRIO
-  useEffect(() => {
-    console.log("🔍 DEBUG useAuth:", {
-      user: user?.email,
-      tokenFromHook: authToken ? `SIM (${authToken.length} chars)` : "NÃO",
-      tokenFromStorage: localStorage.getItem('token') ? `SIM (${localStorage.getItem('token')?.length} chars)` : "NÃO",
-      authLoading
-    });
-  }, [user, authToken, authLoading]);
-
-  // ⭐⭐ CORREÇÃO: Usar token do hook OU do localStorage como fallback
-  const effectiveToken = authToken || localStorage.getItem('token');
+// ✅✅✅ HELPER: Converter HotelOperationResponse para Hotel
+const extractHotelFromResponse = (response: any): HotelWithStatus | null => {
+  if (!response) return null;
   
-  const [hotel, setHotel] = useState<ExtendedAccommodation | null>(null);
-  const [rooms, setRooms] = useState<HotelRoom[]>([]);
+  // Se response já tem os campos de Hotel
+  if ('id' in response || 'hotel_id' in response) {
+    const hotel = response as Hotel;
+    return {
+      ...hotel,
+      status: 'active'
+    };
+  }
+  
+  // Se response é do tipo { success: boolean, data: Hotel, ... }
+  if (response.success && response.data) {
+    return {
+      ...response.data,
+      status: 'active'
+    };
+  }
+  
+  // Se response é do tipo { data: Hotel }
+  if (response.data) {
+    return {
+      ...response.data,
+      status: 'active'
+    };
+  }
+  
+  return null;
+};
+
+// ✅✅✅ HELPER: Converter RoomTypeListResponse para RoomType[]
+const extractRoomsFromResponse = (response: any): RoomType[] => {
+  if (!response) return [];
+  
+  // Se response já é um array
+  if (Array.isArray(response)) {
+    return response;
+  }
+  
+  // Se response tem data que é um array
+  if (response.data && Array.isArray(response.data)) {
+    return response.data;
+  }
+  
+  // Se response tem roomTypes que é um array
+  if (response.roomTypes && Array.isArray(response.roomTypes)) {
+    return response.roomTypes;
+  }
+  
+  // Se response tem success e data que é um array
+  if (response.success && response.data && Array.isArray(response.data)) {
+    return response.data;
+  }
+  
+  return [];
+};
+
+// ✅✅✅ CUSTOM HOOK: Gestão de hotel (lógica separada)
+const useHotelManagement = (hotelId: string | undefined, authToken: string | null) => {
+  const [hotel, setHotel] = useState<HotelWithStatus | null>(null);
+  const [rooms, setRooms] = useState<RoomType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-
-  console.log("🎯 Token efetivo para API:", effectiveToken ? `SIM (${effectiveToken.length} chars)` : "NÃO");
-
-  // ⭐⭐ CORREÇÃO: Carregar dados quando hotelId e effectiveToken estiverem disponíveis
-  useEffect(() => {
-    if (hotelId && effectiveToken) {
-      console.log("🎯 FRONTEND: Hotel ID e Token disponíveis, carregando dados...");
-      loadHotelData();
-    } else if (hotelId && !effectiveToken) {
-      console.log("⏳ FRONTEND: Aguardando token...");
-      setError('Aguardando autenticação...');
-    }
-  }, [hotelId, effectiveToken]);
-
-  // ⭐⭐ FUNÇÃO HELPER PARA REQUISIÇÕES AUTENTICADAS
-  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
-    if (!effectiveToken) {
-      throw new Error('Token de autenticação não encontrado');
-    }
-
-    const headers = {
-      'Authorization': `Bearer ${effectiveToken}`,
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
-
-    console.log(`🔍 FRONTEND: Fetch ${url} com token`);
-    
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ FRONTEND: Erro ${response.status} em ${url}:`, errorText);
-      
-      if (response.status === 401) {
-        throw new Error('Não autorizado - faça login novamente');
-      } else if (response.status === 403) {
-        throw new Error('Sem permissão para acessar este recurso');
-      } else if (response.status === 404) {
-        throw new Error('Recurso não encontrado');
-      } else {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-    }
-
-    return response.json();
-  };
+  const [migrationSource, setMigrationSource] = useState<'v2'>('v2');
 
   const loadHotelData = async () => {
-    if (!hotelId || !effectiveToken) return;
-    
+    if (!hotelId || !authToken) {
+      setError('Hotel ID ou token não disponível');
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
       
-      console.log("🔍 FRONTEND: Buscando hotel com ID:", hotelId);
+      console.log("🔍 Buscando hotel via apiService:", hotelId);
 
-      // ⭐⭐ CORREÇÃO: Usar função helper com autenticação
-      const hotelData = await fetchWithAuth(`/api/hotels/manage-hotel/${hotelId}`);
+      // ✅✅✅ Buscar hotel usando apiService.getHotelById()
+      const hotelResponse = await apiService.getHotelById(hotelId);
       
-      console.log("🔍 FRONTEND: Dados recebidos:", hotelData);
+      console.log("📦 Resposta do apiService:", hotelResponse);
       
-      if (hotelData.success && hotelData.data) {
-        setHotel(hotelData.data.hotel);
+      // ✅✅✅ CORREÇÃO: Extrair dados usando helper
+      const hotelData = extractHotelFromResponse(hotelResponse);
+      
+      if (hotelData) {
+        // ✅✅✅ GARANTIR CAMPOS OBRIGATÓRIOS SEM DUPLICAÇÃO
+        const safeHotelData: HotelWithStatus = {
+          // Campos base do Hotel (garantir valores padrão)
+          id: hotelData.id || hotelData.hotel_id || hotelId,
+          hotel_id: hotelData.hotel_id || hotelData.id || hotelId,
+          name: hotelData.name || hotelData.hotel_name || 'Hotel',
+          hotel_name: hotelData.hotel_name || hotelData.name || 'Hotel',
+          address: hotelData.address || '',
+          locality: hotelData.locality || '',
+          province: hotelData.province || '',
+          contact_email: hotelData.contact_email || '',
+          // Resto dos campos (evitar duplicação)
+          description: hotelData.description,
+          slug: hotelData.slug,
+          hotel_slug: hotelData.hotel_slug,
+          country: hotelData.country,
+          location: hotelData.location,
+          lat: hotelData.lat,
+          lng: hotelData.lng,
+          images: hotelData.images,
+          amenities: hotelData.amenities,
+          distance_km: hotelData.distance_km,
+          min_price_per_night: hotelData.min_price_per_night,
+          max_price_per_night: hotelData.max_price_per_night,
+          rating: hotelData.rating,
+          total_reviews: hotelData.total_reviews,
+          contact_phone: hotelData.contact_phone,
+          check_in_time: hotelData.check_in_time,
+          check_out_time: hotelData.check_out_time,
+          policies: hotelData.policies,
+          host_id: hotelData.host_id,
+          created_by: hotelData.created_by,
+          updated_by: hotelData.updated_by,
+          is_active: hotelData.is_active,
+          created_at: hotelData.created_at,
+          updated_at: hotelData.updated_at,
+          available_room_types: hotelData.available_room_types,
+          match_score: hotelData.match_score,
+          total_available_rooms: hotelData.total_available_rooms,
+          price_range: hotelData.price_range,
+          // Campo adicional
+          status: 'active'
+        };
         
-        // ⭐⭐ CORREÇÃO: Buscar quartos também com autenticação
-        const roomsData = await fetchWithAuth(`/api/hotels/${hotelId}/rooms`);
-        
-        if (roomsData.success) {
-          setRooms(roomsData.data?.rooms || []);
-        }
+        setHotel(safeHotelData);
+        console.log("✅ Hotel carregado:", safeHotelData);
       } else {
-        throw new Error('Dados do hotel inválidos');
+        throw new Error('Hotel não encontrado ou formato inválido');
       }
+
+      // ✅✅✅ CORREÇÃO: Usar apiService.getRoomTypesByHotel() em vez de getRoomTypes()
+      const roomsResponse = await apiService.getRoomTypesByHotel(hotelId);
+      console.log("📦 Resposta dos quartos:", roomsResponse);
+      
+      // ✅✅✅ CORREÇÃO: Extrair dados usando helper
+      const roomsData = extractRoomsFromResponse(roomsResponse);
+      
+      // ✅✅✅ CORREÇÃO: Aplicar valores padrão
+      const roomsWithDefaults = roomsData.map(ensureRoomTypeDefaults);
+      setRooms(roomsWithDefaults);
+      console.log("✅ Quartos carregados:", roomsWithDefaults.length);
+
+      setMigrationSource('v2');
       
     } catch (err) {
-      console.error('❌ FRONTEND: Erro ao carregar dados do hotel:', err);
-      setError(err instanceof Error ? err.message : 'Não foi possível carregar os dados do hotel');
+      console.error('❌ Erro ao carregar dados do hotel:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao carregar dados');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRoomCreated = () => {
-    console.log('Recarregando dados após criação do quarto...');
-    loadHotelData();
+  const handleRoomCreated = async (roomData: Partial<RoomType>) => {
+    try {
+      console.log('Criando novo quarto via apiService:', roomData);
+      
+      if (!hotelId || !authToken) {
+        throw new Error('Hotel ID ou token não disponível');
+      }
+
+      // ✅✅✅ Preparar dados do quarto para apiService.createRoomType()
+      const roomTypeData = {
+        name: roomData.room_type_name || `Quarto ${roomData.room_type_id || 'Novo'}`,
+        description: roomData.description || '',
+        basePrice: roomData.base_price || 0,
+        totalUnits: roomData.total_units || 1,
+        baseOccupancy: roomData.base_occupancy || 2,
+        maxOccupancy: roomData.max_occupancy || 2,
+        amenities: roomData.amenities || [],
+        images: roomData.images || [],
+        availableUnits: roomData.total_units || 1,
+        extraAdultPrice: roomData.extra_adult_price || 0,
+        extraChildPrice: roomData.extra_child_price || 0,
+        childrenPolicy: roomData.children_policy || '',
+        size: roomData.size || '',
+        bedType: roomData.bed_type || '',
+        bedTypes: roomData.bed_types || [],
+        bathroomType: roomData.bathroom_type || ''
+      };
+
+      // ✅✅✅ Usar apiService.createRoomType() corretamente
+      const response: HotelOperationResponse = await apiService.createRoomType(hotelId, roomTypeData);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Erro ao criar tipo de quarto');
+      }
+
+      console.log('✅ Quarto criado com sucesso:', response);
+      
+      // ✅✅✅ Recarregar dados atualizados
+      await loadHotelData();
+      
+    } catch (error) {
+      console.error('❌ Erro ao criar quarto:', error);
+      throw error;
+    }
   };
+
+  return {
+    hotel,
+    rooms,
+    loading,
+    error,
+    migrationSource,
+    loadHotelData,
+    handleRoomCreated
+  };
+};
+
+// ✅✅✅ COMPONENTE: Lista de quartos (separado para reutilização)
+const RoomsList: React.FC<{ rooms: RoomType[] }> = ({ rooms }) => {
+  return (
+    <div className="space-y-4">
+      {rooms.map(room => {
+        // ✅✅✅ CORREÇÃO: Usar valores garantidos com tipo estendido
+        const safeRoom = ensureRoomTypeDefaults(room);
+        
+        return (
+          <div key={safeRoom.room_type_id || safeRoom.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="font-semibold text-lg text-gray-800">
+                    {safeRoom.room_type_name || safeRoom.name || 'Quarto sem nome'}
+                  </h3>
+                </div>
+                {safeRoom.description && (
+                  <p className="text-gray-600">{safeRoom.description}</p>
+                )}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
+                  <div>
+                    <p className="text-sm text-gray-500">Preço</p>
+                    <p className="text-green-600 font-bold">
+                      {/* ✅✅✅ CORREÇÃO: safeRoom.price_per_night agora é garantido */}
+                      {safeRoom.price_per_night.toLocaleString()} MT/noite
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Unidades</p>
+                    <p className="text-gray-800 font-semibold">
+                      {/* ✅✅✅ CORREÇÃO: safeRoom.available_units agora é garantido */}
+                      {safeRoom.available_units} disponíveis
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Capacidade</p>
+                    <p className="text-gray-800">
+                      Até {safeRoom.max_occupancy} hóspedes
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Comodidades</p>
+                    <div className="flex flex-wrap gap-1">
+                      {/* ✅✅✅ CORREÇÃO: safeRoom.amenities agora é garantido */}
+                      {safeRoom.amenities.slice(0, 3).map((amenity, index) => (
+                        <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                          {amenity}
+                        </span>
+                      ))}
+                      {safeRoom.amenities.length > 3 && (
+                        <span className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded">
+                          +{safeRoom.amenities.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 ml-4">
+                <button 
+                  className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 transition-colors"
+                  onClick={() => console.log('Editar quarto:', safeRoom.room_type_id)}
+                >
+                  Editar
+                </button>
+                <button 
+                  className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition-colors"
+                  onClick={() => console.log('Excluir quarto:', safeRoom.room_type_id)}
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ✅✅✅ INTERFACE para o AddRoomForm
+interface AddRoomFormProps {
+  accommodationId: string;
+  hotelAddress: string;
+  onRoomCreated: (roomData: any) => Promise<void>; // ✅ CORRIGIDO: Aceita parâmetro
+}
+
+// ✅✅✅ COMPONENTE: Formulário wrapper (simplificado)
+const AddRoomFormWrapper: React.FC<{ 
+  accommodationId: string; 
+  hotelAddress: string; 
+  onRoomCreated: (roomData: Partial<RoomType>) => Promise<void>;
+  migrationSource: 'v2';
+}> = ({ accommodationId, hotelAddress, onRoomCreated, migrationSource }) => {
+  
+  const handleRoomCreatedInternal = async (roomData: any) => {
+    try {
+      // ✅✅✅ Converter dados do formulário para RoomType
+      const roomTypeData: Partial<RoomType> = {
+        room_type_name: roomData.name || `Quarto ${roomData.roomType || 'Standard'}`,
+        description: roomData.description,
+        base_price: roomData.pricePerNight || 0,
+        total_units: roomData.totalRooms || 1,
+        base_occupancy: 2,
+        max_occupancy: roomData.maxGuests || 2,
+        amenities: roomData.amenities || [],
+        images: roomData.images || [],
+        price_per_night: roomData.pricePerNight || 0,
+        available_units: roomData.totalRooms || 1,
+        size: roomData.size || '',
+        bed_type: roomData.bedType || '',
+        bed_types: roomData.bedTypes || [],
+        bathroom_type: roomData.bathroomType || ''
+      };
+      
+      await onRoomCreated(roomTypeData);
+      
+    } catch (error) {
+      console.error('❌ Erro ao criar quarto:', error);
+      alert('Erro ao criar quarto: ' + (error as Error).message);
+    }
+  };
+
+  // ✅✅✅ CORREÇÃO: Cast do componente AddRoomForm para a interface correta
+  const TypedAddRoomForm = AddRoomForm as React.FC<AddRoomFormProps>;
+
+  return (
+    <div>
+      <TypedAddRoomForm 
+        accommodationId={accommodationId}
+        hotelAddress={hotelAddress}
+        onRoomCreated={handleRoomCreatedInternal} // ✅✅✅ AGORA ESTÁ CORRETO
+      />
+      {migrationSource && (
+        <div className="mt-2 text-xs text-gray-500">
+          Usando API: <span className="font-semibold text-green-600">
+            v2 (Nova)
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ✅✅✅ COMPONENTE PRINCIPAL: HotelManagementPage (SIMPLIFICADO)
+const HotelManagementPage: React.FC = () => {
+  const { hotelId } = useParams<{ hotelId: string }>();
+  const [, setLocation] = useLocation();
+  const { user, token: authToken, loading: authLoading } = useAuth();
+
+  const effectiveToken = authToken || localStorage.getItem('token');
+  
+  // ✅✅✅ USAR HOOK CUSTOMIZADO
+  const {
+    hotel,
+    rooms,
+    loading,
+    error,
+    migrationSource,
+    loadHotelData,
+    handleRoomCreated
+  } = useHotelManagement(hotelId, effectiveToken);
+
+  // ✅ Carregar dados quando hotelId ou token mudar
+  useEffect(() => {
+    if (hotelId && effectiveToken && !authLoading) {
+      console.log("🎯 Carregando dados do hotel:", hotelId);
+      loadHotelData();
+    }
+  }, [hotelId, effectiveToken, authLoading, loadHotelData]);
 
   const navigateTo = (path: string) => {
     setLocation(path);
   };
 
-  // ⭐ WRAPPER para AddRoomForm que aceita onRoomCreated
-  const AddRoomFormWrapper: React.FC<{ 
-    accommodationId: string; 
-    hotelAddress: string; 
-    onRoomCreated: () => void;
-  }> = ({ accommodationId, hotelAddress, onRoomCreated }) => {
-    
-    const handleRoomCreatedInternal = () => {
-      console.log('Quarto criado com sucesso!');
-      onRoomCreated();
-    };
-
-    return (
-      <div>
-        <AddRoomForm 
-          accommodationId={accommodationId}
-          hotelAddress={hotelAddress}
-          onRoomCreated={handleRoomCreatedInternal}
-        />
-      </div>
-    );
-  };
-
-  // ⭐⭐ CORREÇÃO: Verificar effectiveToken em vez de apenas authToken
-  if (!effectiveToken) {
+  // ✅ Renderização condicional - AUTH
+  if (authLoading || !effectiveToken) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
           <p className="mt-4 text-gray-600">Aguardando autenticação...</p>
-          <p className="text-sm text-gray-500 mt-2">Conectando com o servidor de segurança</p>
-          <div className="mt-4 space-y-2">
-            <p className="text-xs text-gray-400">Usuário: {user?.email || 'Não autenticado'}</p>
-            <p className="text-xs text-gray-400">Token do Hook: {authToken ? 'Disponível' : 'Indisponível'}</p>
-            <p className="text-xs text-gray-400">Token do Storage: {localStorage.getItem('token') ? 'Disponível' : 'Indisponível'}</p>
-            <p className="text-xs text-gray-400">Loading do Auth: {authLoading ? 'Sim' : 'Não'}</p>
-          </div>
         </div>
       </div>
     );
   }
 
+  // ✅ Renderização condicional - LOADING
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
           <p className="mt-4 text-gray-600">Carregando dados do hotel...</p>
-          <p className="text-sm text-gray-500 mt-2">Hotel ID: {hotelId}</p>
+          <p className="text-sm text-gray-500">Usando API: v2</p>
         </div>
       </div>
     );
   }
 
+  // ✅ Renderização condicional - ERROR
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -237,6 +475,7 @@ const HotelManagementPage: React.FC = () => {
     );
   }
 
+  // ✅ Renderização condicional - HOTEL NÃO ENCONTRADO
   if (!hotel) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -253,11 +492,38 @@ const HotelManagementPage: React.FC = () => {
     );
   }
 
+  // ✅✅✅ CORREÇÃO: Calcular preço médio de forma segura
+  const calculateAveragePrice = () => {
+    if (rooms.length === 0) return 0;
+    const total = rooms.reduce((sum, room) => {
+      const safeRoom = ensureRoomTypeDefaults(room);
+      return sum + safeRoom.price_per_night;
+    }, 0);
+    return Math.round(total / rooms.length);
+  };
+
+  // ✅✅✅ CORREÇÃO: Calcular unidades totais de forma segura
+  const calculateTotalUnits = () => {
+    return rooms.reduce((sum, room) => {
+      const safeRoom = ensureRoomTypeDefaults(room);
+      return sum + safeRoom.available_units;
+    }, 0);
+  };
+
   return (
     <div className="container mx-auto p-6">
+      {/* Indicador de API */}
+      {migrationSource && (
+        <div className="mb-2 px-3 py-1 rounded text-sm inline-flex items-center gap-2 bg-green-100 text-green-800 border border-green-200">
+          <span className="w-2 h-2 rounded-full bg-green-500"></span>
+          Usando API v2 (Nova)
+        </div>
+      )}
+
       {/* Cabeçalho do Hotel */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold">Gestão de Quartos - {hotel.name}</h1>
+        {/* ✅✅✅ CORREÇÃO: Usar hotel.hotel_name ou hotel.name */}
+        <h1 className="text-3xl font-bold">Gestão de Quartos - {hotel.hotel_name || hotel.name}</h1>
         <p className="text-gray-600">{hotel.address || 'Endereço não disponível'}</p>
         
         <div className="mt-4 flex gap-4">
@@ -279,20 +545,28 @@ const HotelManagementPage: React.FC = () => {
       {/* Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-white p-4 rounded shadow">
-          <h3 className="font-semibold text-gray-700">Quartos Cadastrados</h3>
+          <h3 className="font-semibold text-gray-700">Tipos de Quarto</h3>
           <p className="text-2xl font-bold text-green-600">{rooms.length}</p>
         </div>
         <div className="bg-white p-4 rounded shadow">
-          <h3 className="font-semibold text-gray-700">Taxa de Ocupação</h3>
-          <p className="text-2xl font-bold text-blue-600">82%</p>
+          <h3 className="font-semibold text-gray-700">Unidades Disponíveis</h3>
+          <p className="text-2xl font-bold text-blue-600">
+            {calculateTotalUnits()}
+          </p>
         </div>
         <div className="bg-white p-4 rounded shadow">
-          <h3 className="font-semibold text-gray-700">Receita Mensal</h3>
-          <p className="text-2xl font-bold text-purple-600">224,500 MT</p>
+          <h3 className="font-semibold text-gray-700">Preço Médio</h3>
+          <p className="text-2xl font-bold text-purple-600">
+            {rooms.length > 0 
+              ? `${calculateAveragePrice().toLocaleString()} MT` 
+              : '0 MT'}
+          </p>
         </div>
         <div className="bg-white p-4 rounded shadow">
-          <h3 className="font-semibold text-gray-700">Total de Reservas</h3>
-          <p className="text-2xl font-bold text-orange-600">73</p>
+          <h3 className="font-semibold text-gray-700">Status</h3>
+          <p className={`text-2xl font-bold ${hotel.status === 'active' ? 'text-green-600' : 'text-red-600'}`}>
+            {hotel.status === 'active' ? 'Ativo' : 'Inativo'}
+          </p>
         </div>
       </div>
 
@@ -305,6 +579,7 @@ const HotelManagementPage: React.FC = () => {
               accommodationId={hotelId!}
               hotelAddress={hotel.address || ''}
               onRoomCreated={handleRoomCreated}
+              migrationSource={migrationSource}
             />
           </div>
         </div>
@@ -312,56 +587,23 @@ const HotelManagementPage: React.FC = () => {
         {/* Lista de Quartos Existentes */}
         <div className="lg:col-span-2">
           <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-            <h2 className="text-xl font-bold mb-4 text-gray-800">Quartos do Hotel</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-800">Tipos de Quarto</h2>
+              <span className="text-sm text-gray-500">
+                {rooms.length} {rooms.length === 1 ? 'tipo' : 'tipos'} cadastrados
+              </span>
+            </div>
             
             {rooms.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <span className="text-2xl">🏨</span>
                 </div>
-                <p className="text-lg font-medium mb-2">Nenhum quarto cadastrado ainda.</p>
-                <p className="text-sm">Use o formulário ao lado para adicionar o primeiro quarto.</p>
+                <p className="text-lg font-medium mb-2">Nenhum tipo de quarto cadastrado ainda.</p>
+                <p className="text-sm">Use o formulário ao lado para adicionar o primeiro tipo de quarto.</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {rooms.map(room => (
-                  <div key={room.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-lg text-gray-800">
-                          Quarto {room.roomNumber} - {room.roomType}
-                        </h3>
-                        <p className="text-gray-600 capitalize">{room.description}</p>
-                        <p className="text-green-600 font-bold text-lg">
-                          {room.pricePerNight ? `${room.pricePerNight.toLocaleString()} MT/noite` : 'Preço não definido'}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Capacidade: {room.maxOccupancy || 'N/A'} hóspedes
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Status: <span className={`font-semibold ${room.status === 'available' ? 'text-green-600' : 'text-red-600'}`}>
-                            {room.status === 'available' ? 'Disponível' : 'Indisponível'}
-                          </span>
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button 
-                          className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 transition-colors"
-                          onClick={() => console.log('Editar quarto:', room.id)}
-                        >
-                          Editar
-                        </button>
-                        <button 
-                          className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition-colors"
-                          onClick={() => console.log('Excluir quarto:', room.id)}
-                        >
-                          Excluir
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <RoomsList rooms={rooms} />
             )}
           </div>
         </div>

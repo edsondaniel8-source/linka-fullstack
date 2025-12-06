@@ -1,265 +1,73 @@
+// src/services/apiService.ts
 import { auth } from '@/shared/lib/firebaseConfig';
-import { Booking, RideBookingRequest, HotelBookingRequest } from '@/shared/types/booking';
+import { Booking, RideBookingRequest } from '@/shared/types/booking';
 import { formatDateOnly, formatTimeOnly, formatLongDate, formatWeekday, formatDateTime } from '../utils/dateFormatter';
 
-/**
- * Interfaces para tipagem
- */
-interface Hotel {
-  id: string;
-  userId: string;
-  name: string;
-  description: string;
-  address: string;
-  contactEmail: string;
-  contactPhone: string;
-  amenities: string[];
-  images: string[];
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface RoomType {
-  id: string;
-  hotelId: string;
-  name: string;
-  type: string;
-  description?: string;
-  pricePerNight: number;
-  totalRooms: number;
-  availableRooms: number;
-  maxGuests: number;
-  images?: string[];
-  amenities?: string[];
-  size?: number;
-  bedType?: string;
-  hasBalcony: boolean;
-  hasSeaView: boolean;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface HotelStats {
-  totalBookings: number;
-  monthlyRevenue: number;
-  averageRating: number;
-  averageOccupancy: number;
-  totalEvents: number;
-  upcomingEvents: number;
-  activePartnerships: number;
-  partnershipEarnings: number;
-  totalRoomTypes: number;
-  totalRooms: number;
-  availableRooms: number;
-}
-
-interface HotelEvent {
-  id: string;
-  title: string;
-  description: string;
-  eventType: string;
-  venue: string;
-  startDate: string;
-  endDate: string;
-  ticketPrice: number;
-  maxTickets: number;
-  ticketsSold: number;
-  status: string;
-  organizerId?: string;
-}
-
-interface DriverPartnership {
-  id: string;
-  driver: string;
-  route: string;
-  commission: number;
-  clientsBrought: number;
-  totalEarnings: number;
-  lastMonth: number;
-  rating: number;
-  joinedDate: string;
-  status: string;
-}
-
-interface ChatMessage {
-  id: number;
-  sender: string;
-  message: string;
-  time: string;
-  isHotel: boolean;
-}
-
-// ✅✅✅ INTERFACE RIDE COMPLETAMENTE CORRIGIDA - COMPATÍVEL COM get_rides_smart_final
-export interface Ride {
-  // ✅ Campos ORIGINAIS do PostgreSQL (get_rides_smart_final)
-  ride_id: string;
-  driver_id: string;
-  driver_name: string;
-  driver_rating: number;
-  vehicle_make: string;
-  vehicle_model: string;
-  vehicle_type: string;
-  vehicle_plate: string;
-  vehicle_color: string;
-  max_passengers: number;
-  from_city: string;
-  to_city: string;
-  from_lat: number;
-  from_lng: number;
-  to_lat: number;
-  to_lng: number;
-  departuredate: string;
-  availableseats: number;
-  priceperseat: number;
-  distance_from_city_km: number;
-  distance_to_city_km: number;
+// ====================== IMPORTAÇÕES DOS TIPOS UNIFICADOS ======================
+// ✅ Importamos todos os tipos que vamos usar
+import {
+  // Hotel Types
+  Hotel,
+  RoomType,
+  HotelCreateRequest,
+  HotelUpdateRequest,
+  RoomTypeCreateRequest,
+  RoomTypeUpdateRequest,
+  BulkAvailabilityUpdate,
+  HotelOperationResponse,
+  HotelListResponse,
+  RoomTypeListResponse,
+  HotelStatistics,
+  HotelPerformance,
   
-  // ✅ Campos de matching inteligente
-  match_type?: string;
-  direction_score?: number;
+  // Search Types
+  SearchParams,
+  SearchResponse,
+  HotelSearchResponse,
   
-  // ✅ Campos opcionais
-  from_province?: string;
-  to_province?: string;
+  // Availability Types
+  AvailabilityCheck,
+  NightlyPrice,
+  AvailabilityResponse,
   
-  // ✅✅✅ ALIAS para compatibilidade com frontend existente
-  id: string;
-  driverId: string;
-  driverName: string;
-  driverRating: number;
-  fromLocation: string;
-  toLocation: string;
-  fromAddress: string;
-  toAddress: string;
-  fromCity: string;
-  toCity: string;
-  fromProvince?: string;
-  toProvince?: string;
-  departureDate: string;
-  departureTime: string;
-  price: number;
-  pricePerSeat: number;
-  availableSeats: number;
-  maxPassengers: number;
-  currentPassengers: number;
-  vehicle: string;
-  vehicleType: string;
-  vehicleMake: string;
-  vehicleModel: string;
-  vehiclePlate: string;
-  vehicleColor: string;
-  status: string;
-  type: string;
+  // Booking Types
+  HotelBookingRequest,
+  HotelBookingResponse,
+  HotelBookingData,
+  MyHotelBookingsResponse,
+  BookingStatus,
+  PaymentStatus,
   
-  // ✅ Campos adicionais para compatibilidade
-  vehicleInfo?: {
-    make: string;
-    model: string;
-    type: string;
-    typeDisplay: string;
-    typeIcon: string;
-    plate: string;
-    color: string;
-    maxPassengers: number;
-  };
+  // Chat Types
+  ChatMessage,
+  ChatThread,
+  SendMessageRequest,
+  SendMessageResponse,
   
-  description?: string;
-  vehiclePhoto?: string;
-  estimatedDuration?: number;
-  estimatedDistance?: number;
-  allowNegotiation?: boolean;
-  allowPickupEnRoute?: boolean;
-  isVerifiedDriver?: boolean;
-  availableIn?: number;
-  route_compatibility?: number;
-  match_description?: string;
-  vehicleFeatures?: string[];
-  driver?: {
-    firstName?: string;
-    lastName?: string;
-    rating?: number;
-    isVerified?: boolean;
-  };
-  distanceFromCityKm?: number;
-  distanceToCityKm?: number;
+  // Notification Types
+  Notification,
+  NotificationsResponse,
   
-  // ✅ Campos formatados
-  departureDateFormatted?: string;
-  departureTimeFormatted?: string;
-  departureDateTimeFormatted?: string;
-  departureLongDate?: string;
-  departureWeekday?: string;
-}
+  // Upload Types
+  UploadResponse,
+  
+  // API Response Types
+  ApiResponse,
+  HotelByIdResponse,
+  RoomTypesResponse,
+} from '../types/index';
 
-export interface RideSearchParams {
-  from?: string;
-  to?: string;
-  date?: string;
-  passengers?: number;
-  minPrice?: number;
-  maxPrice?: number;
-  vehicleType?: string;
-  smartSearch?: boolean;
-  maxDistance?: number;
-  radiusKm?: number;
-}
+// ====================== TIPOS RIDE (usa os do arquivo de tipos agora) ======================
+// ✅ CORRIGIDO: Usar 'export type' para re-exportar tipos
+export type { Ride as LocalRide } from '../types/index';
+export type { RideSearchParams as LocalRideSearchParams } from '../types/index';
+export type { MatchStats as LocalMatchStats } from '../types/index';
+export type { RideSearchResponse as LocalRideSearchResponse } from '../types/index';
 
-// ✅ INTERFACE PARA MATCHSTATS ATUALIZADA
-export interface MatchStats {
-  exact_match?: number;
-  same_segment?: number;
-  same_direction?: number;
-  potential?: number;
-  traditional?: number;
-  total: number;
-  smart_matches?: number;
-  drivers_with_ratings?: number;
-  average_driver_rating?: number;
-  vehicle_types?: Record<string, number>;
-  match_types?: Record<string, number>;
-  total_smart_matches?: number;
-  average_direction_score?: number;
-}
+// ====================== FUNÇÕES UTILITÁRIAS RIDES ======================
 
-export interface RideSearchResponse {
-  success: boolean;
-  rides: Ride[];
-  matchStats?: MatchStats;
-  searchParams?: {
-    from: string;
-    to: string;
-    date?: string;
-    passengers?: number;
-    smartSearch: boolean;
-    appliedFilters?: any;
-    radiusKm?: number;
-    searchMethod?: string;
-    functionUsed?: string;
-  };
-  total?: number;
-  data?: {
-    rides: Ride[];
-    stats?: MatchStats;
-    searchParams?: any;
-    smart_search?: boolean;
-  };
-  smart_search?: boolean;
-}
-
-// ✅✅✅ FUNÇÃO DE NORMALIZAÇÃO COMPLETAMENTE CORRIGIDA - COMPATÍVEL COM get_rides_smart_final
-export function normalizeRide(apiRide: any): Ride {
-  console.log('🔄 [NORMALIZAÇÃO] Processando ride:', {
-    ride_id: apiRide.ride_id,
-    driver_name: apiRide.driver_name,
-    match_type: apiRide.match_type,
-    direction_score: apiRide.direction_score
-  });
-
-  // ✅✅✅ CORREÇÃO CRÍTICA: Extrair dados do PostgreSQL e criar aliases
-  const normalized: Ride = {
-    // ✅ Campos ORIGINAIS do PostgreSQL (get_rides_smart_final)
+export function normalizeRide(apiRide: any): any {
+  const normalized = {
     ride_id: apiRide.ride_id || apiRide.id || '',
     driver_id: apiRide.driver_id || apiRide.driverId || '',
     driver_name: apiRide.driver_name || apiRide.driverName || 'Motorista',
@@ -282,15 +90,13 @@ export function normalizeRide(apiRide: any): Ride {
     distance_from_city_km: Number(apiRide.distance_from_city_km ?? apiRide.distanceFromCityKm ?? 0),
     distance_to_city_km: Number(apiRide.distance_to_city_km ?? apiRide.distanceToCityKm ?? 0),
     
-    // ✅ Campos de matching inteligente
     match_type: apiRide.match_type || 'traditional',
     direction_score: Number(apiRide.direction_score ?? 0),
     
-    // ✅ Campos opcionais
     from_province: apiRide.from_province || apiRide.fromProvince,
     to_province: apiRide.to_province || apiRide.toProvince,
     
-    // ✅✅✅ ALIAS para compatibilidade com frontend existente
+    // Aliases para compatibilidade
     id: apiRide.ride_id || apiRide.id || '',
     driverId: apiRide.driver_id || apiRide.driverId || '',
     driverName: apiRide.driver_name || apiRide.driverName || 'Motorista',
@@ -319,13 +125,12 @@ export function normalizeRide(apiRide: any): Ride {
     status: apiRide.status || 'available',
     type: apiRide.type || apiRide.vehicle_type || 'economy',
     
-    // ✅ Campos adicionais para compatibilidade
     vehicleInfo: {
       make: apiRide.vehicle_make || apiRide.vehicleMake || '',
       model: apiRide.vehicle_model || apiRide.vehicleModel || '',
       type: apiRide.vehicle_type || apiRide.vehicleType || 'economy',
-      typeDisplay: 'Económico', // Placeholder
-      typeIcon: '🚗', // Placeholder
+      typeDisplay: 'Económico',
+      typeIcon: '🚗',
       plate: apiRide.vehicle_plate || apiRide.vehiclePlate || '',
       color: apiRide.vehicle_color || apiRide.vehicleColor || '',
       maxPassengers: Number(apiRide.max_passengers ?? apiRide.maxPassengers ?? 4)
@@ -335,7 +140,6 @@ export function normalizeRide(apiRide: any): Ride {
     distanceFromCityKm: Number(apiRide.distance_from_city_km ?? apiRide.distanceFromCityKm ?? 0),
     distanceToCityKm: Number(apiRide.distance_to_city_km ?? apiRide.distanceToCityKm ?? 0),
     
-    // ✅ Campos formatados
     departureDateFormatted: formatDateOnly(apiRide.departuredate || apiRide.departureDate),
     departureTimeFormatted: formatTimeOnly(apiRide.departuredate || apiRide.departureDate),
     departureDateTimeFormatted: formatDateTime(apiRide.departuredate || apiRide.departureDate),
@@ -343,25 +147,14 @@ export function normalizeRide(apiRide: any): Ride {
     departureWeekday: formatWeekday(apiRide.departuredate || apiRide.departureDate)
   };
   
-  console.log('✅ [NORMALIZAÇÃO] Ride normalizado:', {
-    id: normalized.id,
-    driver_name: normalized.driver_name,
-    priceperseat: normalized.priceperseat,
-    match_type: normalized.match_type,
-    direction_score: normalized.direction_score
-  });
-  
   return normalized;
 }
 
-// ✅ FUNÇÃO DE NORMALIZAÇÃO DE LISTA
-export function normalizeRides(backendRides: any[]): Ride[] {
-  console.log(`🔄 [NORMALIZAÇÃO] Normalizando ${backendRides?.length || 0} rides`);
+export function normalizeRides(backendRides: any[]): any[] {
   return (backendRides || []).map(normalizeRide);
 }
 
-// ✅ CRIAR MATCHSTATS PADRÃO
-export function createDefaultMatchStats(): MatchStats {
+export function createDefaultMatchStats(): any {
   return {
     exact_match: 0,
     same_segment: 0,
@@ -379,78 +172,13 @@ export function createDefaultMatchStats(): MatchStats {
   };
 }
 
-// ✅ FUNÇÃO AUXILIAR: Obter nome do motorista
-export function getDriverName(ride: Ride): string {
-  return ride.driver_name || ride.driverName || 'Motorista não disponível';
-}
+// ====================== API SERVICE PRINCIPAL ======================
 
-// ✅ FUNÇÃO AUXILIAR: Obter rating do motorista
-export function getDriverRating(ride: Ride): number {
-  return ride.driver_rating || ride.driverRating || 4.5;
-}
-
-// ✅✅✅ CORREÇÃO: formatPrice aceita qualquer tipo mas converte para number
-export function formatPrice(price: number | string | null | undefined): string {
-  // ✅ Converter para número com fallback para 0
-  const priceNumber = Number(price) || 0;
-  
-  return new Intl.NumberFormat('pt-MZ', {
-    style: 'currency',
-    currency: 'MZN',
-    minimumFractionDigits: 2
-  }).format(priceNumber);
-}
-
-// ✅ FUNÇÃO AUXILIAR: Obter informações completas do veículo
-export function getVehicleInfo(ride: Ride): string {
-  const parts = [];
-  
-  if (ride.vehicle_plate || ride.vehiclePlate) {
-    parts.push(`🚗 ${ride.vehicle_plate || ride.vehiclePlate}`);
-  }
-  
-  if (ride.vehicle_type || ride.vehicleType) {
-    parts.push(ride.vehicle_type || ride.vehicleType);
-  } else if (ride.vehicle) {
-    parts.push(ride.vehicle);
-  }
-  
-  return parts.length > 0 ? parts.join(' • ') : 'Veículo não disponível';
-}
-
-// ✅ FUNÇÃO AUXILIAR: Obter detalhes do veículo
-export function getVehicleDetails(ride: Ride): string {
-  const details = [];
-  
-  const make = ride.vehicle_make || ride.vehicleMake;
-  const model = ride.vehicle_model || ride.vehicleModel;
-  if (make && model) {
-    details.push(`${make} ${model}`);
-  }
-  
-  const color = ride.vehicle_color || ride.vehicleColor;
-  if (color) {
-    details.push(color);
-  }
-  
-  const maxPassengers = ride.max_passengers || ride.maxPassengers;
-  if (maxPassengers) {
-    details.push(`Até ${maxPassengers} passageiros`);
-  }
-  
-  return details.join(' • ');
-}
-
-/**
- * Serviço central de API para todas as apps
- * ATUALIZADO para compatibilidade com get_rides_smart_final
- */
 class ApiService {
   private baseURL: string;
 
   constructor() {
     this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    console.log('🏗️ API Base URL:', this.baseURL);
   }
 
   private async getAuthHeaders(): Promise<Record<string, string>> {
@@ -459,8 +187,6 @@ class ApiService {
       const token = await auth.currentUser?.getIdToken() || localStorage.getItem('authToken');
       if (token) {
         headers.Authorization = `Bearer ${token}`;
-      } else {
-        console.debug('No auth token available');
       }
     } catch (error) {
       console.debug('Error fetching auth token:', error);
@@ -478,24 +204,34 @@ class ApiService {
     const config: RequestInit = { method, headers, credentials: 'include' };
     if (data && method !== 'GET') config.body = JSON.stringify(data);
     
-    console.log(`🔧 API Request: ${method} ${url}`, data || '');
-    
-    try {
-      const response = await fetch(url, config);
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`${response.status}: ${errorText || 'Request failed'}`);
-      }
-      const result = await response.json() as T;
-      console.log(`✅ API Response: ${method} ${endpoint}`, result);
-      return result;
-    } catch (error) {
-      console.error(`❌ API Error: ${method} ${endpoint}`, error);
-      throw error;
+    const response = await fetch(url, config);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`${response.status}: ${errorText || 'Request failed'}`);
     }
+    return await response.json() as T;
   }
 
-  // ✅✅✅ NOVO: Método para chamadas RPC (PostgreSQL Functions)
+  async get<T>(url: string, params?: any): Promise<T> {
+    if (params) {
+      const queryParams = new URLSearchParams(params).toString();
+      url = `${url}${url.includes('?') ? '&' : '?'}${queryParams}`;
+    }
+    return this.request<T>('GET', url);
+  }
+
+  async post<T>(url: string, body?: any): Promise<T> {
+    return this.request<T>('POST', url, body);
+  }
+
+  async put<T>(url: string, body?: any): Promise<T> {
+    return this.request<T>('PUT', url, body);
+  }
+
+  async delete<T>(url: string): Promise<T> {
+    return this.request<T>('DELETE', url);
+  }
+
   private async rpcRequest<T>(
     functionName: string,
     parameters: Record<string, any> = {}
@@ -508,54 +244,36 @@ class ApiService {
       parameters: parameters
     };
     
-    console.log(`🧠 RPC Call ${functionName}:`, parameters);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      credentials: 'include'
+    });
     
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        credentials: 'include'
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`${response.status}: ${errorText || 'RPC request failed'}`);
-      }
-      
-      const result = await response.json() as T;
-      console.log(`✅ RPC Response: ${functionName}`, result);
-      return result;
-    } catch (error) {
-      console.error(`❌ RPC Error: ${functionName}`, error);
-      throw error;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`${response.status}: ${errorText || 'RPC request failed'}`);
     }
+    
+    return await response.json() as T;
   }
 
-  // ===== RIDES API COMPLETAMENTE ATUALIZADA =====
-  async searchRides(params: RideSearchParams): Promise<RideSearchResponse> {
+  // ====================== RIDES API ======================
+  
+  async searchRides(params: any): Promise<any> {
     try {
-      console.log('🔍 [API] Buscando rides com parâmetros:', params);
-      
-      // ✅✅✅ CORREÇÃO CRÍTICA: Usar RPC call para get_rides_smart_final
       const rpcParams = {
         search_from: params.from || '',
         search_to: params.to || '',
         radius_km: params.radiusKm || params.maxDistance || 100,
-        max_results: 50 // Default da função
+        max_results: 50
       };
       
-      console.log('🧠 [API] Chamando get_rides_smart_final via RPC:', rpcParams);
-      
       const rpcResponse = await this.rpcRequest<any[]>('get_rides_smart_final', rpcParams);
-      
-      // ✅ Processar resposta RPC
       const ridesData = Array.isArray(rpcResponse) ? rpcResponse : [];
       
-      console.log(`✅ [API] RPC retornou ${ridesData.length} rides`);
-      
-      // ✅ Calcular estatísticas de matching
-      const matchStats: MatchStats = {
+      const matchStats = {
         total: ridesData.length,
         match_types: ridesData.reduce((acc, ride) => {
           const matchType = ride.match_type || 'traditional';
@@ -569,31 +287,26 @@ class ApiService {
           ridesData.reduce((sum, ride) => sum + (ride.driver_rating || 0), 0) / ridesData.length : 0
       };
       
-      const searchParamsResponse = {
-        from: params.from || '',
-        to: params.to || '',
-        date: params.date,
-        passengers: params.passengers,
-        smartSearch: true,
-        radiusKm: rpcParams.radius_km,
-        searchMethod: 'get_rides_smart_final',
-        functionUsed: 'get_rides_smart_final',
-        appliedFilters: params
-      };
-
       return {
         success: true,
         rides: normalizeRides(ridesData),
         matchStats: matchStats,
-        searchParams: searchParamsResponse,
+        searchParams: {
+          from: params.from || '',
+          to: params.to || '',
+          date: params.date,
+          passengers: params.passengers,
+          smartSearch: true,
+          radiusKm: rpcParams.radius_km,
+          searchMethod: 'get_rides_smart_final',
+          functionUsed: 'get_rides_smart_final',
+          appliedFilters: params
+        },
         total: ridesData.length,
         smart_search: true
       };
       
     } catch (error) {
-      console.error('❌ [API] Erro na busca de rides via RPC:', error);
-      
-      // ✅ Fallback para busca tradicional se RPC falhar
       try {
         const searchParams = new URLSearchParams();
         if (params.from) searchParams.append('from', params.from);
@@ -601,74 +314,42 @@ class ApiService {
         if (params.date) searchParams.append('date', params.date);
         if (params.passengers) searchParams.append('passengers', params.passengers.toString());
 
-        console.log(`🔍 [API] Fallback para busca tradicional: ${params.from} → ${params.to}`);
-        
         const response = await this.request<any>('GET', `/api/rides/search?${searchParams.toString()}`);
-        
         const rides = response.results || response.data?.rides || response.rides || [];
         
-        const searchParamsResponse = {
-          from: params.from || '',
-          to: params.to || '',
-          date: params.date,
-          passengers: params.passengers,
-          smartSearch: false,
-          appliedFilters: params
-        };
-
         return {
           success: true,
           rides: normalizeRides(rides),
           matchStats: response.matchStats || response.data?.stats || createDefaultMatchStats(),
-          searchParams: searchParamsResponse,
+          searchParams: {
+            from: params.from || '',
+            to: params.to || '',
+            date: params.date,
+            passengers: params.passengers,
+            smartSearch: false,
+            appliedFilters: params
+          },
           total: response.total || rides.length || 0,
           smart_search: response.smart_search || false
         };
       } catch (fallbackError) {
-        console.error('❌ [API] Fallback também falhou:', fallbackError);
-        throw error; // Lançar erro original
+        throw error;
       }
     }
   }
 
-  // ✅ BUSCA INTELIGENTE ESPECÍFICA
   async searchSmartRides(params: {
     from: string;
     to: string;
     date?: string;
     passengers?: number;
     radiusKm?: number;
-  }): Promise<RideSearchResponse> {
-    console.log('🧠 [API] Busca SMART específica:', params);
-    
-    // ✅ Reutilizar a função principal
+  }): Promise<any> {
     return this.searchRides({
       from: params.from,
       to: params.to,
       date: params.date,
       passengers: params.passengers,
-      radiusKm: params.radiusKm,
-      smartSearch: true
-    });
-  }
-
-  // ✅ BUSCA UNIVERSAL INTELIGENTE
-  async searchUniversalRides(params: {
-    from?: string;
-    to?: string;
-    lat?: number;
-    lng?: number;
-    toLat?: number;
-    toLng?: number;
-    radiusKm?: number;
-    maxResults?: number;
-  }): Promise<RideSearchResponse> {
-    console.log('🌍 [API] Busca universal inteligente', params);
-    
-    // ✅ Reutilizar a função principal
-    return this.searchRides({
-      from: params.from,
-      to: params.to,
       radiusKm: params.radiusKm,
       smartSearch: true
     });
@@ -689,8 +370,7 @@ class ApiService {
     return this.request('POST', '/api/rides', rideData);
   }
 
-  // 🆕 OBTER DETALHES DE UM RIDE ESPECÍFICO
-  async getRideDetails(rideId: string): Promise<{ success: boolean; data: { ride: Ride } }> {
+  async getRideDetails(rideId: string): Promise<{ success: boolean; data: { ride: any } }> {
     const response = await this.request<any>('GET', `/api/rides/${rideId}`);
     if (response.success) {
       return {
@@ -703,61 +383,428 @@ class ApiService {
     return response;
   }
 
-  // 🆕 BUSCAR RIDES PRÓXIMOS
-  async getNearbyRides(location: string, radius: number = 50, passengers: number = 1): Promise<RideSearchResponse> {
-    console.log('📍 [API] Buscando rides próximos:', { location, radius, passengers });
-    
-    // ✅ Usar busca inteligente com mesma localização
-    return this.searchRides({
-      from: location,
-      to: location,
-      radiusKm: radius,
-      passengers: passengers,
-      smartSearch: true
-    });
+  // ====================== HOTELS API (SIMPLIFICADA) ======================
+  
+  async searchHotels(params: SearchParams): Promise<HotelSearchResponse> {
+    try {
+      return await this.get<HotelSearchResponse>('/api/v2/hotels/search', params);
+    } catch (error) {
+      return {
+        success: false,
+        data: [],
+        hotels: [],
+        count: 0
+      };
+    }
   }
 
-  // 🆕 SOLICITAR RESERVA DE VIAGEM
-  async requestRide(rideId: string, passengers: number, pickupLocation?: string, notes?: string): Promise<{ 
+  async getHotelById(hotelId: string): Promise<HotelByIdResponse> {
+    try {
+      return await this.get<HotelByIdResponse>(`/api/v2/hotels/${hotelId}`);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao buscar hotel'
+      };
+    }
+  }
+
+  async checkAvailability(params: {
+    hotelId: string;
+    roomTypeId: string;
+    checkIn: string;
+    checkOut: string;
+    units?: number;
+    promoCode?: string;
+  }): Promise<AvailabilityResponse> {
+    try {
+      return await this.get<AvailabilityResponse>('/api/v2/hotels/availability', params);
+    } catch (error) {
+      return {
+        success: false,
+        error: 'Erro na verificação de disponibilidade'
+      };
+    }
+  }
+
+  async createHotelBooking(bookingData: HotelBookingRequest): Promise<HotelBookingResponse> {
+    try {
+      return await this.post<HotelBookingResponse>('/api/v2/hotels/bookings', bookingData);
+    } catch (error) {
+      return {
+        success: false,
+        error: 'Erro ao criar reserva'
+      };
+    }
+  }
+
+  // ====================== GESTÃO DE HOTÉIS ======================
+
+  async createHotel(data: HotelCreateRequest): Promise<HotelOperationResponse> {
+    try {
+      return await this.post<HotelOperationResponse>('/api/v2/hotels', data);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao criar hotel'
+      };
+    }
+  }
+
+  async updateHotel(hotelId: string, data: HotelUpdateRequest): Promise<HotelOperationResponse> {
+    try {
+      return await this.put<HotelOperationResponse>(`/api/v2/hotels/${hotelId}`, data);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao atualizar hotel'
+      };
+    }
+  }
+
+  async deleteHotel(hotelId: string): Promise<ApiResponse<{ message: string }>> {
+    try {
+      return await this.delete<ApiResponse<{ message: string }>>(`/api/v2/hotels/${hotelId}`);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao desativar hotel'
+      };
+    }
+  }
+
+  async getAllHotels(params?: { 
+    limit?: number; 
+    offset?: number;
+    active?: boolean;
+  }): Promise<HotelListResponse> {
+    try {
+      return await this.get<HotelListResponse>('/api/v2/hotels', params);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao listar hotéis'
+      };
+    }
+  }
+
+  async getHotelStatsDetailed(hotelId: string): Promise<ApiResponse<HotelStatistics>> {
+    try {
+      return await this.get<ApiResponse<HotelStatistics>>(`/api/v2/hotels/${hotelId}/stats`);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao obter estatísticas'
+      };
+    }
+  }
+
+  async checkQuickAvailability(params: {
+    roomTypeId: string;
+    checkIn: string;
+    checkOut: string;
+    units?: number;
+  }): Promise<{ 
     success: boolean; 
-    message: string; 
-    booking: any;
-    rideDetails: any;
+    available?: boolean;
+    data?: any;
+    error?: string;
   }> {
-    return this.request('POST', '/api/bookings', {
-      rideId,
-      passengers,
-      pickupLocation,
-      notes,
-      type: 'ride'
-    });
+    try {
+      const response = await this.get<AvailabilityResponse>('/api/v2/hotels/availability/quick', params);
+      return {
+        success: response.success || false,
+        available: response.data?.available,
+        data: response.data,
+        error: response.error
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro na verificação de disponibilidade'
+      };
+    }
   }
 
-  // 🆕 OBTER ESTATÍSTICAS DE MATCHING
-  async getRideMatchStats(from: string, to: string): Promise<{ success: boolean; data: { stats: MatchStats } }> {
-    console.log('📊 [API] Buscando estatísticas de matching:', { from, to });
-    
-    // ✅ Fazer uma busca para calcular estatísticas
-    const searchResponse = await this.searchRides({
-      from: from,
-      to: to,
-      smartSearch: true
-    });
-    
-    return {
-      success: true,
-      data: {
-        stats: searchResponse.matchStats || createDefaultMatchStats()
-      }
-    };
+  async getBookingsByEmail(email: string, status?: BookingStatus): Promise<MyHotelBookingsResponse> {
+    try {
+      return await this.get<MyHotelBookingsResponse>('/api/v2/hotels/my-bookings', { email, status });
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao obter reservas'
+      };
+    }
   }
 
-  // ===== BOOKINGS API =====
+  async getBookingDetails(bookingId: string): Promise<ApiResponse<HotelBookingData>> {
+    try {
+      return await this.get<ApiResponse<HotelBookingData>>(`/api/v2/hotels/bookings/${bookingId}`);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao obter detalhes da reserva'
+      };
+    }
+  }
+
+  async cancelBooking(bookingId: string): Promise<ApiResponse<{ message: string }>> {
+    try {
+      return await this.post<ApiResponse<{ message: string }>>(`/api/v2/hotels/bookings/${bookingId}/cancel`);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao cancelar reserva'
+      };
+    }
+  }
+
+  // ====================== GESTÃO DE QUARTOS ======================
+
+  async createRoomType(hotelId: string, data: RoomTypeCreateRequest): Promise<HotelOperationResponse> {
+    try {
+      return await this.post<HotelOperationResponse>(`/api/v2/hotels/${hotelId}/room-types`, data);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao criar tipo de quarto'
+      };
+    }
+  }
+
+  async updateRoomType(hotelId: string, roomTypeId: string, data: RoomTypeUpdateRequest): Promise<HotelOperationResponse> {
+    try {
+      return await this.put<HotelOperationResponse>(`/api/v2/hotels/${hotelId}/room-types/${roomTypeId}`, data);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao atualizar tipo de quarto'
+      };
+    }
+  }
+
+  async getRoomTypesByHotel(hotelId: string, params?: {
+    available?: boolean;
+    checkIn?: string;
+    checkOut?: string;
+  }): Promise<RoomTypeListResponse> {
+    try {
+      return await this.get<RoomTypeListResponse>(`/api/v2/hotels/${hotelId}/room-types`, params);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao listar tipos de quarto'
+      };
+    }
+  }
+
+  async bulkUpdateAvailability(hotelId: string, data: BulkAvailabilityUpdate): Promise<ApiResponse<{ updated: number; message: string }>> {
+    try {
+      return await this.post<ApiResponse<{ updated: number; message: string }>>(`/api/v2/hotels/${hotelId}/availability/bulk`, data);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao atualizar disponibilidade'
+      };
+    }
+  }
+
+  async getHotelPerformance(hotelId: string, params?: {
+    startDate?: string;
+    endDate?: string;
+    period?: 'day' | 'week' | 'month' | 'year';
+  }): Promise<ApiResponse<HotelPerformance>> {
+    try {
+      return await this.get<ApiResponse<HotelPerformance>>(`/api/v2/hotels/${hotelId}/performance`, params);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao obter performance'
+      };
+    }
+  }
+
+  // ====================== OUTROS MÉTODOS ======================
+  
+  getRideById(rideId: string): Promise<{ success: boolean; data: { ride: any } }> {
+    return this.getRideDetails(rideId);
+  }
+
+  createRideBooking(data: any) {
+    return this.post('/api/rides/book', data);
+  }
+
+  getDriverRides(params?: any) {
+    return this.get('/api/rides/driver', params);
+  }
+
+  login(data: { email: string; password: string }) {
+    return this.post('/api/auth/login', data);
+  }
+
+  register(data: any) {
+    return this.post('/api/auth/register', data);
+  }
+
+  logout() {
+    return this.post('/api/auth/logout');
+  }
+
+  refreshToken() {
+    return this.post('/api/auth/refresh-token');
+  }
+
+  getProfile() {
+    return this.get('/api/auth/me');
+  }
+
+  updateProfile(data: any) {
+    return this.post('/api/auth/update', data);
+  }
+
+  uploadImage(file: File): Promise<UploadResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    return fetch(`${this.baseURL}/api/upload`, {
+      method: "POST",
+      credentials: "include",
+      body: formData
+    }).then(r => r.json());
+  }
+
+  getNotifications(): Promise<NotificationsResponse> {
+    return this.get<NotificationsResponse>('/api/notifications');
+  }
+
+  markNotificationAsRead(notificationId: string) {
+    return this.post(`/api/notifications/${notificationId}/read`);
+  }
+
+  getChatThread(threadId: string): Promise<ApiResponse<ChatThread>> {
+    return this.get<ApiResponse<ChatThread>>(`/api/chat/${threadId}`);
+  }
+
+  sendChatMessage(threadId: string, message: string): Promise<SendMessageResponse> {
+    return this.post<SendMessageResponse>(`/api/chat/${threadId}/send`, { message });
+  }
+
+  getHotelStats(hotelId: string) {
+    return this.get(`/api/v2/hotels/${hotelId}/stats`);
+  }
+
+  getHotelEvents(hotelId: string, params?: { status?: BookingStatus; upcoming?: boolean }) {
+    return this.get(`/api/v2/hotels/${hotelId}/events`, params);
+  }
+
+  getChat(hotelId: string, params?: { threadId?: string; limit?: number }) {
+    return this.get(`/api/v2/hotels/${hotelId}/chat`, params);
+  }
+
+  cancelHotelBooking(bookingId: string) {
+    return this.cancelBooking(bookingId);
+  }
+
+  checkInHotelBooking(bookingId: string) {
+    return this.post(`/api/v2/hotels/bookings/${bookingId}/check-in`);
+  }
+
+  checkOutHotelBooking(bookingId: string) {
+    return this.post(`/api/v2/hotels/bookings/${bookingId}/check-out`);
+  }
+
+  getMyHotelBookings(email: string, status?: BookingStatus): Promise<MyHotelBookingsResponse> {
+    return this.getBookingsByEmail(email, status);
+  }
+
+  getHotels() {
+    return this.getAllHotels();
+  }
+
+  async testHotelsV2(): Promise<ApiResponse<{ message: string; count?: number }>> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/v2/hotels/search?location=Maputo&limit=1`);
+      const v2Working = response.ok;
+      const v2Data = v2Working ? await response.json() : null;
+      
+      return {
+        success: v2Working,
+        data: {
+          message: v2Working 
+            ? `✅ API funcionando (${v2Data?.count || 0} hotéis)` 
+            : '❌ API não está respondendo',
+          count: v2Data?.count
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`
+      };
+    }
+  }
+
+  async getNightlyPrices(params: {
+    roomTypeId: string;
+    checkIn: string;
+    checkOut: string;
+    units?: number;
+  }): Promise<ApiResponse<NightlyPrice[]>> {
+    try {
+      return await this.get<ApiResponse<NightlyPrice[]>>('/api/v2/hotels/availability/nightly-prices', params);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao obter preços'
+      };
+    }
+  }
+
+  async getRoomTypeDetails(hotelId: string, roomTypeId: string): Promise<ApiResponse<RoomType>> {
+    try {
+      return await this.get<ApiResponse<RoomType>>(`/api/v2/hotels/${hotelId}/room-types/${roomTypeId}`);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao obter detalhes do tipo de quarto'
+      };
+    }
+  }
+
+  async getBookingStatus(bookingId: string): Promise<ApiResponse<{ status: BookingStatus; paymentStatus: PaymentStatus }>> {
+    try {
+      return await this.get<ApiResponse<{ status: BookingStatus; paymentStatus: PaymentStatus }>>(`/api/v2/hotels/bookings/${bookingId}/status`);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao obter status da reserva'
+      };
+    }
+  }
+
+  async sendChatMessageFull(threadId: string, messageData: SendMessageRequest): Promise<SendMessageResponse> {
+    try {
+      return await this.post<SendMessageResponse>(`/api/chat/${threadId}/send`, messageData);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao enviar mensagem'
+      };
+    }
+  }
+
+  async getNotificationsByType(type: string): Promise<ApiResponse<Notification[]>> {
+    try {
+      return await this.get<ApiResponse<Notification[]>>(`/api/notifications/type/${type}`);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao obter notificações'
+      };
+    }
+  }
+
   async bookRide(bookingData: RideBookingRequest): Promise<{ success: boolean; data: { booking: Booking } }> {
-    return this.request('POST', '/api/bookings', bookingData);
-  }
-
-  async bookHotel(bookingData: HotelBookingRequest): Promise<{ success: boolean; data: { booking: Booking } }> {
     return this.request('POST', '/api/bookings', bookingData);
   }
 
@@ -774,10 +821,8 @@ class ApiService {
         };
       }
 
-      let payload: any;
-
       if (type === 'ride') {
-        payload = {
+        const payload = {
           rideId: bookingData.rideId,
           passengerId: user.uid,
           seatsBooked: bookingData.passengers,
@@ -793,20 +838,34 @@ class ApiService {
         return { success: true, data: result.data };
         
       } else if (type === 'hotel') {
-        payload = {
-          accommodationId: bookingData.accommodationId,
-          passengerId: user.uid,
-          totalPrice: bookingData.totalAmount,
-          guestName: bookingData.guestInfo?.name,
-          guestEmail: bookingData.guestInfo?.email,
-          guestPhone: bookingData.guestInfo?.phone,
-          checkInDate: bookingData.checkInDate,
-          checkOutDate: bookingData.checkOutDate,
-          type: 'hotel'
+        const payload: HotelBookingRequest = {
+          hotelId: bookingData.hotelId,
+          roomTypeId: bookingData.roomTypeId,
+          checkIn: bookingData.checkIn,
+          checkOut: bookingData.checkOut,
+          guestName: bookingData.guestName,
+          guestEmail: bookingData.guestEmail,
+          guestPhone: bookingData.guestPhone,
+          adults: bookingData.adults || 1,
+          children: bookingData.children || 0,
+          units: bookingData.units || 1,
+          specialRequests: bookingData.specialRequests,
+          promoCode: bookingData.promoCode
         };
         
-        const result = await this.bookHotel(payload);
-        return { success: true, data: result.data };
+        const result = await this.createHotelBooking(payload);
+        
+        return { 
+          success: result.success, 
+          data: result.booking ? { 
+            booking: {
+              ...result.booking,
+              passengerId: result.booking.guestEmail,
+              type: 'hotel'
+            } as any as Booking
+          } : undefined,
+          error: result.error
+        };
         
       } else {
         return { 
@@ -815,7 +874,6 @@ class ApiService {
         };
       }
     } catch (error: any) {
-      console.error('❌ Erro ao criar booking:', error);
       return { 
         success: false, 
         error: error.message || 'Erro ao criar reserva' 
@@ -827,137 +885,25 @@ class ApiService {
     return this.request('GET', '/api/bookings/user');
   }
 
-  // ===== USER/AUTH API =====
-  async getUserProfile(): Promise<{ success: boolean; data: any }> {
-    return this.request('GET', '/api/auth/profile');
+  async getUserProfile(): Promise<ApiResponse<any>> {
+    return this.request<ApiResponse<any>>('GET', '/api/auth/profile');
   }
 
-  async updateUserProfile(userData: any): Promise<{ success: boolean; data: any }> {
-    return this.request('PUT', '/api/auth/profile', userData);
+  async updateUserProfile(userData: any): Promise<ApiResponse<any>> {
+    return this.request<ApiResponse<any>>('PUT', '/api/auth/profile', userData);
   }
 
-  // ===== HOTELS API =====
-  async searchAccommodations(params: { location?: string; checkIn?: string; checkOut?: string; guests?: number }): Promise<{ success: boolean; data: { accommodations: Hotel[] } }> {
-    const searchParams = new URLSearchParams();
-    if (params.location) searchParams.append('location', params.location);
-    if (params.checkIn) searchParams.append('checkIn', params.checkIn);
-    if (params.checkOut) searchParams.append('checkOut', params.checkOut);
-    if (params.guests) searchParams.append('guests', params.guests.toString());
-    
-    return this.request('GET', `/api/search/accommodations?${searchParams.toString()}`);
-  }
-
-  async createAccommodation(accommodationData: any): Promise<{ success: boolean; data: { hotel: Hotel } }> {
-    return this.request('POST', '/api/hotels', accommodationData);
-  }
-
-  async getUserAccommodations(): Promise<{ success: boolean; data: { hotels: Hotel[] } }> {
+  async checkHealth(): Promise<{ success: boolean; services: Record<string, string> }> {
     try {
-      return await this.request('GET', '/api/hotels/my-hotels');
+      const response = await fetch(`${this.baseURL}/api/health`);
+      if (response.ok) {
+        const data = await response.json();
+        return { success: true, services: data.services || {} };
+      }
+      return { success: false, services: {} };
     } catch (error) {
-      console.error('Erro ao buscar acomodações do usuário:', error);
-      return { success: false, data: { hotels: [] } };
+      return { success: false, services: {} };
     }
-  }
-
-  async getHotelById(hotelId: string): Promise<{ success: boolean; data: { hotel: Hotel } }> {
-    return this.request('GET', `/api/hotels/${hotelId}`);
-  }
-
-  async updateHotel(hotelId: string, hotelData: Partial<Hotel>): Promise<{ success: boolean; data: { hotel: Hotel } }> {
-    return this.request('PUT', `/api/hotels/${hotelId}`, hotelData);
-  }
-
-  async deleteHotel(hotelId: string): Promise<{ success: boolean }> {
-    return this.request('DELETE', `/api/hotels/${hotelId}`);
-  }
-
-  async updateRoom(roomId: string, roomData: Partial<RoomType>): Promise<{ success: boolean; data: { room: RoomType } }> {
-    return this.request('PUT', `/api/rooms/${roomId}`, roomData);
-  }
-
-  async getHotelStats(hotelId: string): Promise<{ success: boolean; data: { stats: HotelStats } }> {
-    return this.request('GET', `/api/hotels/${hotelId}/stats`);
-  }
-
-  // ===== ROOMS API =====
-  async getRoomsByHotelId(hotelId: string): Promise<{ success: boolean; data: { rooms: RoomType[] } }> {
-    return this.request('GET', `/api/hotels/${hotelId}/rooms`);
-  }
-
-  async createRoom(roomData: Partial<RoomType>): Promise<{ success: boolean; data: { room: RoomType } }> {
-    return this.request('POST', '/api/rooms', roomData);
-  }
-
-  async deleteRoom(roomId: string): Promise<{ success: boolean }> {
-    return this.request('DELETE', `/api/rooms/${roomId}`);
-  }
-
-  // ===== PARTNERSHIPS API =====
-  async createPartnership(partnershipData: { partnerId: string; type: 'driver-hotel' | 'hotel-driver'; terms: string }): Promise<{ success: boolean; data: any }> {
-    return this.request('POST', '/api/partnerships/create', partnershipData);
-  }
-
-  async getPartnershipRequests(): Promise<{ success: boolean; data: { requests: any[] } }> {
-    return this.request('GET', '/api/partnerships/requests');
-  }
-
-  async getDriverPartnerships(hotelId: string): Promise<{ success: boolean; data: { partnerships: DriverPartnership[] } }> {
-    return this.request('GET', `/api/partnerships/driver?hotelId=${hotelId}`);
-  }
-
-  // ===== EVENTS API =====
-  async getEvents(hotelId?: string): Promise<{ success: boolean; data: { events: HotelEvent[] } }> {
-    const url = hotelId ? `/api/events?hotelId=${hotelId}` : '/api/events';
-    return this.request('GET', url);
-  }
-
-  async createEvent(eventData: any): Promise<{ success: boolean; data: { event: HotelEvent } }> {
-    return this.request('POST', '/api/events/create', eventData);
-  }
-
-  async updateEvent(eventId: string, eventData: Partial<HotelEvent>): Promise<{ success: boolean; data: { event: HotelEvent } }> {
-    return this.request('PUT', `/api/events/${eventId}`, eventData);
-  }
-
-  // ===== FEATURED OFFERS API =====
-  async getFeaturedOffers(): Promise<{ success: boolean; data: { offers: any[] } }> {
-    return this.request('GET', '/api/offers/featured');
-  }
-
-  // ===== CHAT API =====
-  async getChatRooms(): Promise<{ success: boolean; data: { rooms: any[] } }> {
-    return this.request('GET', '/api/chat/rooms');
-  }
-
-  async getChatMessages(roomId: string): Promise<{ success: boolean; data: { messages: ChatMessage[] } }> {
-    return this.request('GET', `/api/chat/messages/${roomId}`);
-  }
-
-  async sendChatMessage(roomId: string, messageData: { message: string }): Promise<{ success: boolean; data: { message: ChatMessage } }> {
-    return this.request('POST', `/api/chat/messages/${roomId}`, messageData);
-  }
-
-  // ===== ADMIN API =====
-  async getAdminStats(): Promise<{ success: boolean; data: any }> {
-    return this.request('GET', '/api/admin/stats');
-  }
-
-  async getAdminRides(): Promise<{ success: boolean; data: { rides: any[] } }> {
-    return this.request('GET', '/api/admin/rides');
-  }
-
-  async getAdminBookings(): Promise<{ success: boolean; data: { bookings: Booking[] } }> {
-    return this.request('GET', '/api/admin/bookings');
-  }
-
-  // ===== LOCATIONS API =====
-  async searchLocations(query: string, limit: number = 10): Promise<{ success: boolean; data: any[] }> {
-    const searchParams = new URLSearchParams();
-    searchParams.append('q', query);
-    searchParams.append('limit', limit.toString());
-    
-    return this.request('GET', `/api/locations/autocomplete?${searchParams.toString()}`);
   }
 }
 
