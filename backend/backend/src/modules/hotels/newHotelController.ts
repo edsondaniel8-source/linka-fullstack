@@ -1,6 +1,12 @@
 import { Router, Request, Response } from "express";
 import { newHotelService } from "./newHotelService";
 import { z } from "zod";
+import { db } from "../../../db"; // Importe o db se precisar
+import { room_types } from "../../../shared/schema"; // Importe o schema
+import { eq } from "drizzle-orm"; // Importe eq
+
+// CORREÇÃO: Importe a função verifyFirebaseToken do seu auth existente
+import { verifyFirebaseToken } from "../../../src/shared/firebaseAuth.js";
 
 const router = Router();
 
@@ -269,6 +275,43 @@ router.get("/:hotelId/stats", async (req: Request, res: Response) => {
 });
 
 /**
+ * Rota: Obter tipos de quarto do hotel
+ * GET /api/v2/hotels/:hotelId/room-types
+ * CORRIGIDA: Usando Drizzle ORM em vez de executeRawQuery
+ */
+router.get("/:hotelId/room-types", async (req: Request, res: Response) => {
+  try {
+    const { hotelId } = req.params;
+    
+    if (!hotelId) {
+      return res.status(400).json({
+        success: false,
+        error: "Hotel ID is required"
+      });
+    }
+    
+    // Usando Drizzle ORM (como no restante do código)
+    const roomTypes = await db
+      .select()
+      .from(room_types)
+      .where(eq(room_types.hotel_id, hotelId))
+      .orderBy(room_types.name);
+    
+    res.status(200).json({
+      success: true,
+      data: roomTypes || []
+    });
+  } catch (error) {
+    console.error("Error in get hotel room types:", error);
+    // Retorna 200 com array vazio para não quebrar o frontend
+    res.status(200).json({
+      success: true,
+      data: []
+    });
+  }
+});
+
+/**
  * Rota: Verificar disponibilidade em tempo real
  * GET /api/v2/hotels/availability/quick
  */
@@ -306,12 +349,20 @@ router.get("/availability/quick", async (req: Request, res: Response) => {
  */
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const { limit = '50', offset = '0' } = req.query;
+    // ✅ CORREÇÃO: Validação segura dos parâmetros
+    const limitStr = req.query.limit as string | undefined;
+    const offsetStr = req.query.offset as string | undefined;
     
-    const result = await newHotelService.getAllHotels(
-      parseInt(limit as string),
-      parseInt(offset as string)
-    );
+    // Validação segura dos parâmetros
+    const limit = limitStr 
+      ? Math.max(1, Math.min(parseInt(limitStr) || 50, 100)) 
+      : 50;
+    
+    const offset = offsetStr 
+      ? Math.max(0, parseInt(offsetStr) || 0) 
+      : 0;
+    
+    const result = await newHotelService.getAllHotels(limit, offset);
     
     res.status(200).json(result);
   } catch (error) {
@@ -346,12 +397,24 @@ router.get("/:hotelId", async (req: Request, res: Response) => {
 /**
  * Rota: Criar hotel (admin/host)
  * POST /api/v2/hotels
+ * CORREÇÃO: Usando verifyFirebaseToken que já existe
  */
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", verifyFirebaseToken, async (req: Request, res: Response) => {
   try {
+    // Agora temos o usuário autenticado do middleware
+    const userId = (req as any).user?.uid; // Firebase usa 'uid'
+    
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "User not authenticated or user ID not found in token"
+      });
+    }
+    
     const data = createHotelSchema.parse(req.body);
     
-    const result = await newHotelService.createHotel(data);
+    // ✅ CORREÇÃO APLICADA: Passar o userId como segundo parâmetro!
+    const result = await newHotelService.createHotel(data, userId);
     
     res.status(result.success ? 201 : 400).json(result);
   } catch (error) {

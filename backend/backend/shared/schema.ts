@@ -172,14 +172,14 @@ export const room_types = pgTable("room_types", {
   activeIdx: index("room_types_active_idx").on(table.is_active).where(sql`is_active = true`),
 }));
 
-// ✅ TABELA DE DISPONIBILIDADE (CRÍTICA - CORRIGIDA) - ÚNICA ALTERAÇÃO
+// ✅ TABELA DE DISPONIBILIDADE (CRÍTICA - CORRIGIDA) - ÚNICA ALTERAÇÃO NECESSÁRIA
 export const room_availability = pgTable("room_availability", {
   id: uuid("id").primaryKey().defaultRandom(),
   hotel_id: uuid("hotel_id").references(() => hotels.id, { onDelete: "cascade" }).notNull(),
   room_type_id: uuid("room_type_id").references(() => room_types.id, { onDelete: "cascade" }).notNull(),
   date: timestamp("date", { mode: 'date' }).notNull(),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  remaining_units: integer("remaining_units").notNull().default(0),
+  available_units: integer("available_units").notNull().default(0), // ✅ CORREÇÃO: remaining_units → available_units
   stop_sell: boolean("stop_sell").default(false),
   min_nights: integer("min_nights").default(1),
   max_stay: integer("max_stay"),
@@ -838,11 +838,11 @@ export const insertRoomTypeSchema = createInsertSchema(room_types, {
   updated_at: true,
 });
 
-// ✅ NOVO: Schema para room_availability
+// ✅ NOVO: Schema para room_availability - ATUALIZADO
 export const insertRoomAvailabilitySchema = createInsertSchema(room_availability, {
   date: z.date(),
   price: z.number().positive(),
-  remaining_units: z.number().int().nonnegative(),
+  available_units: z.number().int().nonnegative(), // ✅ CORREÇÃO: remaining_units → available_units
   stop_sell: z.boolean().default(false),
   min_nights: z.number().int().positive().default(1),
 }).omit({

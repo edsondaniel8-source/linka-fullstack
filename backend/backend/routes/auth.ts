@@ -14,6 +14,37 @@ import {
 
 const router = Router();
 
+// CORREÇÃO: Schema corrigido para usar 'host' em vez de 'hotel_manager'
+const updateRolesSchema = z.object({
+  roles: z.array(z.enum(['client', 'driver', 'host', 'admin'])).min(1)
+});
+
+// CORREÇÃO: Helper para converter hotel_manager para host
+const normalizeRole = (role: string): 'client' | 'driver' | 'host' | 'admin' => {
+  switch (role) {
+    case 'hotel_manager':
+    case 'host':
+      return 'host';
+    case 'client':
+    case 'driver':
+    case 'admin':
+      return role;
+    default:
+      return 'client'; // fallback
+  }
+};
+
+const normalizeRoles = (roles: string[]): ('client' | 'driver' | 'host' | 'admin')[] => {
+  return roles.map(normalizeRole);
+};
+
+const getUserType = (roles: ('client' | 'driver' | 'host' | 'admin')[]): 'client' | 'driver' | 'host' | 'admin' => {
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('host')) return 'host';
+  if (roles.includes('driver')) return 'driver';
+  return 'client';
+};
+
 // Registration/Login endpoint
 router.post('/register', async (req: Request, res: Response) => {
   try {
@@ -72,15 +103,25 @@ router.get('/profile', verifyFirebaseToken, async (req: Request, res: Response, 
 });
 
 // Update user roles
-const updateRolesSchema = z.object({
-  roles: z.array(z.enum(['client', 'driver', 'hotel_manager', 'admin'])).min(1)
-});
-
 router.put('/roles', verifyFirebaseToken, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const authReq = req as AuthenticatedRequest;
     const userId = authReq.user.uid;
-    const { roles } = updateRolesSchema.parse(req.body);
+    
+    // CORREÇÃO: Aceitar qualquer string e normalizar
+    const inputRoles = req.body.roles;
+    if (!Array.isArray(inputRoles) || inputRoles.length === 0) {
+      return res.status(400).json(createApiError(
+        'Pelo menos um role deve ser selecionado', 
+        'ROLES_REQUIRED'
+      ));
+    }
+    
+    // Normalizar os roles (converter hotel_manager para host)
+    const normalizedRoles = normalizeRoles(inputRoles);
+    
+    // Validar com o schema corrigido
+    const { roles } = updateRolesSchema.parse({ roles: normalizedRoles });
 
     // Admin role can only be assigned by existing admins
     if (roles.includes('admin')) {
@@ -93,10 +134,12 @@ router.put('/roles', verifyFirebaseToken, async (req: Request, res: Response, ne
       }
     }
 
+    const userType = getUserType(roles);
+
     const [updatedUser] = await db.update(users)
       .set({ 
         roles,
-        userType: roles.includes('admin') ? 'admin' : roles.includes('hotel_manager') ? 'hotel_manager' : roles.includes('driver') ? 'driver' : 'client',
+        userType,
         updatedAt: new Date()
       })
       .where(eq(users.id, userId))
@@ -114,18 +157,26 @@ router.post('/setup-user-roles', verifyFirebaseToken, async (req: Request, res: 
   try {
     const authReq = req as AuthenticatedRequest;
     const userId = authReq.user.uid;
-    const { roles } = req.body;
+    let inputRoles = req.body.roles;
     
     if (!userId) {
       return res.status(401).json(createApiError('Token inválido', 'INVALID_TOKEN'));
     }
     
-    if (!roles || !Array.isArray(roles) || roles.length === 0) {
+    if (!inputRoles || !Array.isArray(inputRoles) || inputRoles.length === 0) {
       return res.status(400).json(createApiError(
         'Pelo menos um role deve ser selecionado', 
         'ROLES_REQUIRED'
       ));
     }
+
+    // CORREÇÃO: Normalizar os roles (converter hotel_manager para host)
+    const normalizedRoles = normalizeRoles(inputRoles);
+    
+    // Validar com o schema corrigido
+    const { roles } = updateRolesSchema.parse({ roles: normalizedRoles });
+    
+    const userType = getUserType(roles);
 
     // Check if user exists, if not create them
     const [existingUser] = await db.select().from(users).where(eq(users.id, userId));
@@ -139,8 +190,8 @@ router.post('/setup-user-roles', verifyFirebaseToken, async (req: Request, res: 
         firstName: userDisplayName?.split(' ')[0] || '',
         lastName: userDisplayName?.split(' ').slice(1).join(' ') || '',
         profileImageUrl: authReq.user.photoURL || null,
-        roles: roles,
-        userType: roles.includes('admin') ? 'admin' : roles.includes('hotel_manager') ? 'hotel_manager' : roles.includes('driver') ? 'driver' : 'client',
+        roles,
+        userType,
         createdAt: new Date(),
         updatedAt: new Date()
       }).returning();
@@ -162,7 +213,7 @@ router.post('/setup-user-roles', verifyFirebaseToken, async (req: Request, res: 
       const [updatedUser] = await db.update(users)
         .set({ 
           roles,
-          userType: roles.includes('admin') ? 'admin' : roles.includes('hotel_manager') ? 'hotel_manager' : roles.includes('driver') ? 'driver' : 'client',
+          userType,
           updatedAt: new Date()
         })
         .where(eq(users.id, userId))

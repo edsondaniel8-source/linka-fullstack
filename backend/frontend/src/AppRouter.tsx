@@ -1,4 +1,4 @@
-// src/AppRouter.tsx
+// src/AppRouter.tsx (APENAS a parte relevante)
 import { Route, Switch } from 'wouter';
 import SearchRides from './apps/main-app/pages/Rides/search';
 
@@ -7,8 +7,8 @@ import MainApp from './apps/main-app/App';
 import DriversApp from './apps/drivers-app/App';
 import AdminApp from './apps/admin-app/App';
 
-// Importar o HotelLayout diretamente
-import HotelLayout from './apps/hotels-app/routes'; // Agora exporta default
+// ⭐⭐ MUDAR PARA HotelRoutes ⭐⭐
+import HotelRoutes from './apps/hotels-app/HotelRoutes';
 
 // Importar páginas individuais
 import LoginPage from './pages/login';
@@ -25,12 +25,12 @@ function AppRouter() {
       {/* Nova rota para pesquisa de viagens */}
       <Route path="/rides/search" component={SearchRides} />
       
-      {/* ⭐⭐ Rotas do HotelsApp - Agora usa HotelLayout diretamente */}
+      {/* ⭐⭐ Rotas do HotelsApp - Agora usa HotelRoutes ⭐⭐ */}
       <Route path="/hotels/:rest*">
-        <HotelLayout />
+        <HotelRoutes />
       </Route>
       <Route path="/hotels">
-        <HotelLayout />
+        <HotelRoutes />
       </Route>
       
       {/* Rotas das outras aplicações */}

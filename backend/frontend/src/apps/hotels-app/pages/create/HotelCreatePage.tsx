@@ -1,6 +1,6 @@
 // src/apps/hotels-app/pages/create/HotelCreatePage.tsx
 import { useState } from 'react';
-import { Link, useLocation } from 'wouter';
+import { useLocation } from 'wouter'; // ✅ REMOVIDO: Link import
 import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Input } from '@/shared/components/ui/input';
@@ -294,12 +294,15 @@ export default function HotelCreatePage() {
             </div>
 
             <div className="flex justify-between pt-6">
-              <Link href="/hotels/dashboard">
-                <Button variant="outline" type="button">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Voltar
-                </Button>
-              </Link>
+              {/* ✅ CORREÇÃO: Substituído Link por Button com onClick */}
+              <Button 
+                variant="outline" 
+                type="button"
+                onClick={() => setLocation('/hotels/dashboard')}
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Voltar
+              </Button>
               <Button onClick={() => setStep(2)}>
                 Próximo: Amenities
               </Button>
@@ -548,11 +551,14 @@ export default function HotelCreatePage() {
           <p className="text-sm text-gray-500">
             As informações podem ser atualizadas a qualquer momento no painel de gestão.
           </p>
-          <Link href="/hotels/dashboard">
-            <Button variant="link" className="mt-2">
-              Voltar ao Dashboard
-            </Button>
-          </Link>
+          {/* ✅ CORREÇÃO: Substituído Link por Button com onClick */}
+          <Button 
+            variant="link" 
+            className="mt-2"
+            onClick={() => setLocation('/hotels/dashboard')}
+          >
+            Voltar ao Dashboard
+          </Button>
         </div>
       </div>
     </div>

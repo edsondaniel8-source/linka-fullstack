@@ -1,7 +1,6 @@
 // src/apps/hotels-app/App.tsx
-import { HotelRoutes } from './routes';
+import HotelRoutes from './HotelRoutes';
 
-// Este é o componente principal do módulo Hotels
 export default function HotelsApp() {
   return <HotelRoutes />;
 }

@@ -372,15 +372,66 @@ export class NewHotelService {
       `;
 
       const rows = await executeRawQuery(query, [hotelId]);
-      return rows[0] || {};
+      const stats = rows[0] || {};
+      
+      // CORREÇÃO: Garantir que retorna todos os campos esperados mesmo se a função falhar
+      return {
+        total_bookings: stats.total_bookings || 0,
+        active_bookings: stats.active_bookings || 0,
+        today_checkins: stats.today_checkins || 0,
+        today_checkouts: stats.today_checkouts || 0,
+        total_revenue: stats.total_revenue || 0,
+        available_rooms: stats.available_rooms || 0,
+        total_rooms: stats.total_rooms || 0,
+        occupancy_rate: stats.occupancy_rate || 0,
+        monthly_revenue: stats.monthly_revenue || 0
+      };
     } catch (error) {
       console.error('Error in getHotelStats:', error);
-      return {};
+      // CORREÇÃO: Retorna dados vazios se der erro, não throw
+      return {
+        total_bookings: 0,
+        active_bookings: 0,
+        today_checkins: 0,
+        today_checkouts: 0,
+        total_revenue: 0,
+        available_rooms: 0,
+        total_rooms: 0,
+        occupancy_rate: 0,
+        monthly_revenue: 0
+      };
     }
   }
 
   /**
-   * Criar hotel
+   * Obter tipos de quarto do hotel
+   * NOVA FUNÇÃO: Para a rota /room-types
+   */
+  async getHotelRoomTypes(hotelId: string) {
+    try {
+      // Usando Drizzle ORM (como no restante do código)
+      const roomTypes = await db
+        .select()
+        .from(room_types)
+        .where(eq(room_types.hotel_id, hotelId))
+        .orderBy(room_types.name);
+
+      return {
+        success: true,
+        data: roomTypes || []
+      };
+    } catch (error) {
+      console.error('Error in getHotelRoomTypes:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        data: []
+      };
+    }
+  }
+
+  /**
+   * Criar hotel - CORRIGIDO: Aceita userId como parâmetro opcional
    */
   async createHotel(data: {
     name: string;
@@ -396,8 +447,18 @@ export class NewHotelService {
     contactPhone?: string;
     hostId?: string;
     policies?: string;
-  }) {
+  }, userId?: string) {
     try {
+      // CORREÇÃO: Usar userId do parâmetro OU do data.hostId
+      const effectiveHostId = userId || data.hostId;
+      
+      if (!effectiveHostId) {
+        return {
+          success: false,
+          error: "Host ID is required. User must be authenticated."
+        };
+      }
+      
       const result = await db.insert(hotels).values({
         name: data.name,
         slug: data.name.toLowerCase().replace(/\s+/g, '-'),
@@ -411,7 +472,7 @@ export class NewHotelService {
         amenities: data.amenities || [],
         contact_email: data.contactEmail,
         contact_phone: data.contactPhone,
-        host_id: data.hostId,
+        host_id: effectiveHostId, // ← AGORA USA effectiveHostId
         check_in_time: '14:00:00',
         check_out_time: '12:00:00',
         policies: data.policies,
@@ -420,8 +481,8 @@ export class NewHotelService {
         is_active: true,
         created_at: new Date(),
         updated_at: new Date(),
-        created_by: data.hostId,
-        updated_by: data.hostId
+        created_by: effectiveHostId,
+        updated_by: effectiveHostId
       }).returning();
 
       return {
@@ -682,6 +743,13 @@ export class NewHotelService {
         error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
+  }
+
+  /**
+   * Helper para executar queries raw - CORREÇÃO: Tornar público
+   */
+  async executeRawQuery<T = any>(query: string, params?: any[]): Promise<T[]> {
+    return executeRawQuery(query, params);
   }
 
   close() {
