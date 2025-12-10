@@ -1,4 +1,4 @@
-// src/apps/hotels-app/pages/bookings/create/BookingCreatePage.tsx
+// src/apps/hotels-app/pages/bookings/create/BookingCreatePage.tsx - VERSÃO CORRIGIDA
 import { useState, useEffect } from 'react';
 import { Link } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -46,16 +46,37 @@ export default function BookingCreatePage() {
     promoCode: '',
   });
 
+  // ✅✅✅ CORREÇÃO: Adicionar logs de debug ✅✅✅
+  useEffect(() => {
+    console.log('🔍 BookingCreatePage - Estado atual:');
+    console.log('  selectedHotelId:', selectedHotelId);
+    console.log('  selectedRoomTypeId:', selectedRoomTypeId);
+    console.log('  roomTypes count:', roomTypes.length);
+    console.log('  selectedRoom:', selectedRoom);
+  }, [selectedHotelId, selectedRoomTypeId, roomTypes, selectedRoom]);
+
   // Buscar hotéis
   useEffect(() => {
     const fetchHotels = async () => {
       try {
+        console.log('🔍 BookingCreatePage: Buscando hotéis...');
         const response = await apiService.getAllHotels();
+        console.log('📋 BookingCreatePage: Resposta de hotéis:', response);
+        
         if (response.success && response.data) {
-          setHotels(Array.isArray(response.data) ? response.data : []);
+          const hotelsData = Array.isArray(response.data) ? response.data : [];
+          console.log('✅ BookingCreatePage: Hotéis carregados:', hotelsData.length);
+          setHotels(hotelsData);
+        } else {
+          console.error('❌ BookingCreatePage: Erro ao buscar hotéis:', response.error);
+          toast({
+            title: 'Erro',
+            description: 'Não foi possível carregar a lista de hotéis',
+            variant: 'destructive',
+          });
         }
       } catch (error) {
-        console.error('Erro ao buscar hotéis:', error);
+        console.error('❌ BookingCreatePage: Erro ao buscar hotéis:', error);
       }
     };
     fetchHotels();
@@ -64,59 +85,122 @@ export default function BookingCreatePage() {
   // Buscar tipos de quarto quando hotel for selecionado
   useEffect(() => {
     const fetchRoomTypes = async () => {
-      if (!selectedHotelId) return;
+      if (!selectedHotelId || selectedHotelId === 'undefined') {
+        console.log('⚠️ BookingCreatePage: hotelId inválido, não buscando room types');
+        setRoomTypes([]);
+        return;
+      }
+      
+      console.log('🔍 BookingCreatePage: Buscando room types para hotel:', selectedHotelId);
       
       try {
         const response = await apiService.getRoomTypesByHotel(selectedHotelId);
+        console.log('📋 BookingCreatePage: Resposta de room types:', response);
+        
         if (response.success && response.data) {
           const rooms = Array.isArray(response.data) ? response.data : [];
-          setRoomTypes(rooms.filter((room: any) => room.is_active !== false));
+          const activeRooms = rooms.filter((room: any) => room.is_active !== false);
+          console.log('✅ BookingCreatePage: Room types carregados:', activeRooms.length);
+          setRoomTypes(activeRooms);
+          
+          // Resetar room type selecionado se não estiver mais disponível
+          if (selectedRoomTypeId && !activeRooms.some((r: any) => 
+            r.id === selectedRoomTypeId || r.room_type_id === selectedRoomTypeId
+          )) {
+            console.log('🔄 BookingCreatePage: Resetando room type selecionado');
+            setSelectedRoomTypeId('');
+            setSelectedRoom(null);
+          }
+        } else {
+          console.error('❌ BookingCreatePage: Erro ao buscar room types:', response.error);
+          setRoomTypes([]);
         }
       } catch (error) {
-        console.error('Erro ao buscar tipos de quarto:', error);
+        console.error('❌ BookingCreatePage: Erro ao buscar tipos de quarto:', error);
+        setRoomTypes([]);
       }
     };
     
     fetchRoomTypes();
   }, [selectedHotelId]);
 
-  // Atualizar quarto selecionado
+  // ✅✅✅ CORREÇÃO: Atualizar quarto selecionado com validação melhorada ✅✅✅
   useEffect(() => {
-    if (selectedRoomTypeId && roomTypes.length > 0) {
-      const room = roomTypes.find((r: any) => 
-        r.id === selectedRoomTypeId || r.room_type_id === selectedRoomTypeId
-      );
+    console.log('🔄 BookingCreatePage: Atualizando room selecionado');
+    console.log('  selectedRoomTypeId:', selectedRoomTypeId);
+    console.log('  roomTypes count:', roomTypes.length);
+    
+    if (selectedRoomTypeId && selectedRoomTypeId !== 'undefined' && roomTypes.length > 0) {
+      const room = roomTypes.find((r: any) => {
+        const roomId = r.id || r.room_type_id;
+        console.log('  Comparando:', roomId, 'com', selectedRoomTypeId);
+        return roomId === selectedRoomTypeId;
+      });
+      
+      console.log('  Room encontrado:', room);
       setSelectedRoom(room || null);
     } else {
+      console.log('  Nenhum room encontrado, resetando...');
       setSelectedRoom(null);
     }
   }, [selectedRoomTypeId, roomTypes]);
 
-  // Calcular total
+  // ✅✅✅ CORREÇÃO: Função de cálculo de total melhorada ✅✅✅
   const calculateTotal = () => {
-    if (!selectedRoom || !formData.checkIn || !formData.checkOut) return 0;
-    
-    const checkIn = new Date(formData.checkIn);
-    const checkOut = new Date(formData.checkOut);
-    const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
-    
-    let total = (selectedRoom.base_price || selectedRoom.basePrice || 0) * nights * formData.units;
-    
-    // Adicionar extras para adultos adicionais
-    const baseOccupancy = selectedRoom.base_occupancy || selectedRoom.baseOccupancy || 2;
-    if (formData.adults > baseOccupancy) {
-      const extraAdults = formData.adults - baseOccupancy;
-      const extraAdultPrice = selectedRoom.extra_adult_price || selectedRoom.extraAdultPrice || 0;
-      total += extraAdultPrice * extraAdults * nights * formData.units;
+    if (!selectedRoom || !formData.checkIn || !formData.checkOut) {
+      console.log('⚠️ BookingCreatePage: Dados insuficientes para cálculo');
+      return 0;
     }
     
-    // Adicionar extras para crianças
-    if (formData.children > 0) {
-      const extraChildPrice = selectedRoom.extra_child_price || selectedRoom.extraChildPrice || 0;
-      total += extraChildPrice * formData.children * nights * formData.units;
+    try {
+      const checkIn = new Date(formData.checkIn);
+      const checkOut = new Date(formData.checkOut);
+      
+      // Validar datas
+      if (checkIn >= checkOut) {
+        console.error('❌ BookingCreatePage: Check-in deve ser antes do check-out');
+        return 0;
+      }
+      
+      const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Obter preços com fallbacks
+      const basePrice = parseFloat(selectedRoom.base_price || selectedRoom.basePrice || '0');
+      const extraAdultPrice = parseFloat(selectedRoom.extra_adult_price || selectedRoom.extraAdultPrice || '0');
+      const extraChildPrice = parseFloat(selectedRoom.extra_child_price || selectedRoom.extraChildPrice || '0');
+      const baseOccupancy = parseInt(selectedRoom.base_occupancy || selectedRoom.baseOccupancy || '2');
+      
+      console.log('📊 BookingCreatePage: Cálculo detalhado:');
+      console.log('  Preço base:', basePrice);
+      console.log('  Noites:', nights);
+      console.log('  Unidades:', formData.units);
+      console.log('  Adultos:', formData.adults, '(base:', baseOccupancy, ')');
+      console.log('  Crianças:', formData.children);
+      console.log('  Preço adulto extra:', extraAdultPrice);
+      console.log('  Preço criança extra:', extraChildPrice);
+      
+      // Calcular total base
+      let total = basePrice * nights * formData.units;
+      
+      // Adicionar extras para adultos adicionais
+      if (formData.adults > baseOccupancy) {
+        const extraAdults = formData.adults - baseOccupancy;
+        total += extraAdultPrice * extraAdults * nights * formData.units;
+        console.log('  Extra adultos:', extraAdultPrice * extraAdults * nights * formData.units);
+      }
+      
+      // Adicionar extras para crianças
+      if (formData.children > 0) {
+        total += extraChildPrice * formData.children * nights * formData.units;
+        console.log('  Extra crianças:', extraChildPrice * formData.children * nights * formData.units);
+      }
+      
+      console.log('💰 BookingCreatePage: Total calculado:', total);
+      return total;
+    } catch (error) {
+      console.error('❌ BookingCreatePage: Erro ao calcular total:', error);
+      return 0;
     }
-    
-    return total;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -126,52 +210,176 @@ export default function BookingCreatePage() {
 
   const handleNumberChange = (name: string, value: string) => {
     const numValue = parseInt(value) || 0;
+    
+    // Validações específicas
+    if (name === 'adults' && numValue < 1) {
+      toast({
+        title: 'Aviso',
+        description: 'Número de adultos deve ser pelo menos 1',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    if (name === 'units' && numValue < 1) {
+      toast({
+        title: 'Aviso',
+        description: 'Número de unidades deve ser pelo menos 1',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    if (name === 'units' && selectedRoom) {
+      const availableUnits = selectedRoom.available_units || selectedRoom.availableUnits || 0;
+      if (numValue > availableUnits) {
+        toast({
+          title: 'Aviso',
+          description: `Apenas ${availableUnits} unidade(s) disponível(is)`,
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+    
     setFormData(prev => ({ ...prev, [name]: numValue }));
   };
 
   const handleDateChange = (name: string, date: Date | undefined) => {
     if (date) {
-      setFormData(prev => ({ ...prev, [name]: date.toISOString().split('T')[0] }));
+      const dateString = date.toISOString().split('T')[0];
+      console.log(`📅 BookingCreatePage: ${name} alterado para:`, dateString);
+      setFormData(prev => ({ ...prev, [name]: dateString }));
     }
   };
 
   const validateStep1 = () => {
+    console.log('🔍 BookingCreatePage: Validando step 1...');
+    
     if (!formData.guestName.trim()) {
-      toast({ title: 'Erro', description: 'Nome do hóspede é obrigatório', variant: 'destructive' });
+      toast({ 
+        title: 'Erro', 
+        description: 'Nome do hóspede é obrigatório', 
+        variant: 'destructive' 
+      });
       return false;
     }
+    
     if (!formData.guestEmail.trim()) {
-      toast({ title: 'Erro', description: 'Email do hóspede é obrigatório', variant: 'destructive' });
+      toast({ 
+        title: 'Erro', 
+        description: 'Email do hóspede é obrigatório', 
+        variant: 'destructive' 
+      });
       return false;
     }
+    
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.guestEmail)) {
+      toast({ 
+        title: 'Erro', 
+        description: 'Email inválido', 
+        variant: 'destructive' 
+      });
+      return false;
+    }
+    
     if (!formData.checkIn || !formData.checkOut) {
-      toast({ title: 'Erro', description: 'Datas de check-in e check-out são obrigatórias', variant: 'destructive' });
+      toast({ 
+        title: 'Erro', 
+        description: 'Datas de check-in e check-out são obrigatórias', 
+        variant: 'destructive' 
+      });
       return false;
     }
+    
+    // Validar que check-in é anterior ao check-out
+    const checkInDate = new Date(formData.checkIn);
+    const checkOutDate = new Date(formData.checkOut);
+    
+    if (checkInDate >= checkOutDate) {
+      toast({ 
+        title: 'Erro', 
+        description: 'Data de check-in deve ser anterior ao check-out', 
+        variant: 'destructive' 
+      });
+      return false;
+    }
+    
+    // Validar que check-in não é no passado (para demonstração, permitimos)
+    // if (checkInDate < new Date()) {
+    //   toast({ 
+    //     title: 'Aviso', 
+    //     description: 'Data de check-in não pode ser no passado', 
+    //     variant: 'destructive' 
+    //   });
+    //   return false;
+    // }
+    
     if (formData.adults < 1) {
-      toast({ title: 'Erro', description: 'Número de adultos deve ser pelo menos 1', variant: 'destructive' });
+      toast({ 
+        title: 'Erro', 
+        description: 'Número de adultos deve ser pelo menos 1', 
+        variant: 'destructive' 
+      });
       return false;
     }
+    
     if (formData.units < 1) {
-      toast({ title: 'Erro', description: 'Número de unidades deve ser pelo menos 1', variant: 'destructive' });
+      toast({ 
+        title: 'Erro', 
+        description: 'Número de unidades deve ser pelo menos 1', 
+        variant: 'destructive' 
+      });
       return false;
     }
+    
+    console.log('✅ BookingCreatePage: Step 1 validado com sucesso');
     return true;
   };
 
   const validateStep2 = () => {
-    if (!selectedHotelId) {
-      toast({ title: 'Erro', description: 'Selecione um hotel', variant: 'destructive' });
+    console.log('🔍 BookingCreatePage: Validando step 2...');
+    
+    if (!selectedHotelId || selectedHotelId === 'undefined') {
+      toast({ 
+        title: 'Erro', 
+        description: 'Selecione um hotel', 
+        variant: 'destructive' 
+      });
       return false;
     }
-    if (!selectedRoomTypeId) {
-      toast({ title: 'Erro', description: 'Selecione um tipo de quarto', variant: 'destructive' });
+    
+    if (!selectedRoomTypeId || selectedRoomTypeId === 'undefined') {
+      toast({ 
+        title: 'Erro', 
+        description: 'Selecione um tipo de quarto', 
+        variant: 'destructive' 
+      });
       return false;
     }
+    
+    // Validar disponibilidade
+    if (selectedRoom) {
+      const availableUnits = selectedRoom.available_units || selectedRoom.availableUnits || 0;
+      if (formData.units > availableUnits) {
+        toast({ 
+          title: 'Erro', 
+          description: `Apenas ${availableUnits} unidade(s) disponível(is) para este tipo de quarto`, 
+          variant: 'destructive' 
+        });
+        return false;
+      }
+    }
+    
+    console.log('✅ BookingCreatePage: Step 2 validado com sucesso');
     return true;
   };
 
   const handleNextStep = () => {
+    console.log(`➡️ BookingCreatePage: Indo para step ${step + 1}`);
+    
     if (step === 1 && validateStep1()) {
       setStep(2);
     } else if (step === 2 && validateStep2()) {
@@ -180,43 +388,76 @@ export default function BookingCreatePage() {
   };
 
   const handlePreviousStep = () => {
+    console.log(`⬅️ BookingCreatePage: Voltando para step ${step - 1}`);
     if (step > 1) {
       setStep(step - 1);
     }
   };
 
+  // ✅✅✅ CORREÇÃO: Mutation para criar booking com validação completa ✅✅✅
   const createBookingMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedHotelId || !selectedRoomTypeId) {
-        throw new Error('Hotel e tipo de quarto são obrigatórios');
+      console.log('📤 BookingCreatePage: Criando booking...');
+      console.log('  Hotel ID:', selectedHotelId);
+      console.log('  Room Type ID:', selectedRoomTypeId);
+      
+      // Validação rigorosa dos IDs
+      if (!selectedHotelId || selectedHotelId === 'undefined') {
+        throw new Error('ID do hotel é inválido ou não foi selecionado');
       }
-
+      
+      if (!selectedRoomTypeId || selectedRoomTypeId === 'undefined') {
+        throw new Error('ID do tipo de quarto é inválido ou não foi selecionado');
+      }
+      
+      // Verificar se o quarto ainda está disponível
+      if (selectedRoom) {
+        const availableUnits = selectedRoom.available_units || selectedRoom.availableUnits || 0;
+        if (formData.units > availableUnits) {
+          throw new Error(`Apenas ${availableUnits} unidade(s) disponível(is). Reduza o número de unidades.`);
+        }
+      }
+      
       const bookingData = {
         hotelId: selectedHotelId,
         roomTypeId: selectedRoomTypeId,
         guestName: formData.guestName,
         guestEmail: formData.guestEmail,
-        guestPhone: formData.guestPhone,
+        guestPhone: formData.guestPhone || '',
         checkIn: formData.checkIn,
         checkOut: formData.checkOut,
         adults: formData.adults,
         children: formData.children,
         units: formData.units,
-        specialRequests: formData.specialRequests,
+        specialRequests: formData.specialRequests || '',
         paymentMethod: formData.paymentMethod,
         totalPrice: calculateTotal(),
       };
+      
+      console.log('📦 BookingCreatePage: Dados do booking:', bookingData);
 
       // Em produção, use: return await apiService.createBooking(bookingData);
-      // Simulação por enquanto
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      return { 
-        success: true, 
-        bookingId: `BOOK-${Date.now()}`,
-        message: 'Reserva criada com sucesso!' 
-      };
+      // Simulação por enquanto para demonstração
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          // Simular validação
+          if (Math.random() > 0.1) { // 90% de sucesso
+            console.log('✅ BookingCreatePage: Booking criado com sucesso (simulação)');
+            resolve({ 
+              success: true, 
+              bookingId: `BOOK-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              message: 'Reserva criada com sucesso!' 
+            });
+          } else {
+            console.error('❌ BookingCreatePage: Simulação de erro no booking');
+            reject(new Error('Erro simulado ao criar reserva'));
+          }
+        }, 1500);
+      });
     },
-    onSuccess: (response) => {
+    onSuccess: (response: any) => {
+      console.log('🎉 BookingCreatePage: Booking criado com sucesso:', response);
+      
       toast({
         title: 'Sucesso!',
         description: response.message,
@@ -225,20 +466,31 @@ export default function BookingCreatePage() {
       
       // Redirecionar para detalhes da reserva
       setTimeout(() => {
+        console.log('📍 BookingCreatePage: Redirecionando para detalhes do booking');
         window.location.href = `/hotels/bookings/${response.bookingId}`;
       }, 2000);
     },
     onError: (error: any) => {
+      console.error('❌ BookingCreatePage: Erro ao criar booking:', error);
+      
       toast({
-        title: 'Erro',
-        description: error.message || 'Erro ao criar reserva',
+        title: 'Erro ao criar reserva',
+        description: error.message || 'Não foi possível criar a reserva. Tente novamente.',
         variant: 'destructive',
       });
     },
   });
 
   const handleSubmit = () => {
+    console.log('🚀 BookingCreatePage: Submetendo formulário...');
+    
+    // Validação final
+    if (!validateStep1() || !validateStep2()) {
+      return;
+    }
+    
     setLoading(true);
+    console.log('⏳ BookingCreatePage: Iniciando criação do booking...');
     createBookingMutation.mutate();
     setLoading(false);
   };
@@ -248,6 +500,11 @@ export default function BookingCreatePage() {
     : 0;
 
   const totalPrice = calculateTotal();
+
+  // ✅✅✅ CORREÇÃO: Obter ID do hotel selecionado com fallback ✅✅✅
+  const getSelectedHotel = () => {
+    return hotels.find(h => (h.id || h.hotel_id) === selectedHotelId);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-8">
@@ -341,6 +598,7 @@ export default function BookingCreatePage() {
                     onChange={handleInputChange}
                     placeholder="Nome do hóspede"
                     className="h-12"
+                    required
                   />
                 </div>
                 
@@ -354,6 +612,7 @@ export default function BookingCreatePage() {
                     onChange={handleInputChange}
                     placeholder="exemplo@email.com"
                     className="h-12"
+                    required
                   />
                 </div>
                 
@@ -392,6 +651,7 @@ export default function BookingCreatePage() {
                         selected={formData.checkIn ? new Date(formData.checkIn) : undefined}
                         onSelect={(date) => handleDateChange('checkIn', date)}
                         initialFocus
+                        disabled={(date) => date < new Date()}
                       />
                     </PopoverContent>
                   </Popover>
@@ -418,7 +678,10 @@ export default function BookingCreatePage() {
                         selected={formData.checkOut ? new Date(formData.checkOut) : undefined}
                         onSelect={(date) => handleDateChange('checkOut', date)}
                         initialFocus
-                        disabled={(date) => date <= new Date(formData.checkIn || new Date())}
+                        disabled={(date) => 
+                          date <= new Date(formData.checkIn || new Date()) ||
+                          date < new Date()
+                        }
                       />
                     </PopoverContent>
                   </Popover>
@@ -432,10 +695,16 @@ export default function BookingCreatePage() {
                     id="adults"
                     type="number"
                     min="1"
+                    max={selectedRoom?.max_occupancy || 10}
                     value={formData.adults}
                     onChange={(e) => handleNumberChange('adults', e.target.value)}
                     className="h-12"
                   />
+                  {selectedRoom && formData.adults > (selectedRoom.max_occupancy || selectedRoom.maxOccupancy || 2) && (
+                    <p className="text-xs text-red-600 mt-1">
+                      Capacidade máxima: {selectedRoom.max_occupancy || selectedRoom.maxOccupancy || 2} pessoas
+                    </p>
+                  )}
                 </div>
                 
                 <div className="space-y-2">
@@ -456,10 +725,16 @@ export default function BookingCreatePage() {
                     id="units"
                     type="number"
                     min="1"
+                    max={selectedRoom?.available_units || selectedRoom?.availableUnits || 10}
                     value={formData.units}
                     onChange={(e) => handleNumberChange('units', e.target.value)}
                     className="h-12"
                   />
+                  {selectedRoom && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {selectedRoom.available_units || selectedRoom.availableUnits || 0} disponível(is)
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -493,137 +768,176 @@ export default function BookingCreatePage() {
             <CardContent className="space-y-6">
               <div className="space-y-4">
                 <Label>Selecione um Hotel *</Label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {hotels.length === 0 ? (
-                    <div className="col-span-2 text-center py-8">
-                      <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-600">Nenhum hotel disponível</p>
-                      <p className="text-sm text-gray-500 mb-4">Crie um hotel primeiro</p>
-                      <Link href="/hotels/create">
-                        <Button>Criar Hotel</Button>
-                      </Link>
-                    </div>
-                  ) : (
-                    hotels.map((hotel) => (
-                      <div
-                        key={hotel.id || hotel.hotel_id}
-                        className={cn(
-                          "border rounded-lg p-4 cursor-pointer transition-all",
-                          selectedHotelId === (hotel.id || hotel.hotel_id)
-                            ? "border-blue-500 bg-blue-50"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                        onClick={() => setSelectedHotelId(hotel.id || hotel.hotel_id)}
-                      >
-                        <div className="flex items-start space-x-3">
-                          <Building2 className="h-5 w-5 text-gray-400 mt-0.5" />
-                          <div>
-                            <h3 className="font-semibold text-gray-900">{hotel.name || hotel.hotel_name}</h3>
-                            <p className="text-sm text-gray-600">{hotel.address}</p>
-                            <p className="text-xs text-gray-500">{hotel.locality}, {hotel.province}</p>
-                          </div>
-                          {selectedHotelId === (hotel.id || hotel.hotel_id) && (
-                            <CheckCircle className="h-5 w-5 text-blue-500 ml-auto" />
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {selectedHotelId && roomTypes.length > 0 && (
-                <div className="space-y-4">
-                  <Label>Selecione um Tipo de Quarto *</Label>
-                  <div className="grid grid-cols-1 gap-4">
-                    {roomTypes.map((room) => {
-                      const roomId = room.id || room.room_type_id;
-                      const isSelected = selectedRoomTypeId === roomId;
-                      const available = room.available_units || room.availableUnits || 0;
-                      const price = room.base_price || room.basePrice || 0;
+                {hotels.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600">Nenhum hotel disponível</p>
+                    <p className="text-sm text-gray-500 mb-4">Crie um hotel primeiro</p>
+                    <Link href="/hotels/create">
+                      <Button>Criar Hotel</Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {hotels.map((hotel) => {
+                      const hotelId = hotel.id || hotel.hotel_id;
+                      const isSelected = selectedHotelId === hotelId;
                       
                       return (
                         <div
-                          key={roomId}
+                          key={hotelId}
                           className={cn(
                             "border rounded-lg p-4 cursor-pointer transition-all",
                             isSelected
                               ? "border-blue-500 bg-blue-50"
-                              : available === 0
-                              ? "border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed"
                               : "border-gray-200 hover:border-gray-300"
                           )}
-                          onClick={() => available > 0 && setSelectedRoomTypeId(roomId)}
+                          onClick={() => {
+                            console.log('🏨 BookingCreatePage: Hotel selecionado:', hotelId);
+                            setSelectedHotelId(hotelId);
+                            // Resetar room type ao mudar de hotel
+                            if (selectedHotelId !== hotelId) {
+                              setSelectedRoomTypeId('');
+                              setSelectedRoom(null);
+                            }
+                          }}
                         >
-                          <div className="flex items-start justify-between">
+                          <div className="flex items-start space-x-3">
+                            <Building2 className="h-5 w-5 text-gray-400 mt-0.5" />
                             <div className="flex-1">
-                              <div className="flex items-center space-x-2 mb-2">
-                                <h3 className="font-semibold text-gray-900">{room.name || room.room_type_name}</h3>
-                                {isSelected && (
-                                  <CheckCircle className="h-5 w-5 text-blue-500" />
-                                )}
-                              </div>
-                              
-                              <p className="text-sm text-gray-600 mb-3">{room.description}</p>
-                              
-                              <div className="flex flex-wrap gap-2 mb-3">
-                                <div className="flex items-center text-sm">
-                                  <Bed className="h-4 w-4 text-gray-400 mr-1" />
-                                  <span>{room.bed_type || 'Standard'}</span>
-                                </div>
-                                <div className="flex items-center text-sm">
-                                  <Users className="h-4 w-4 text-gray-400 mr-1" />
-                                  <span>{room.base_occupancy || 1}-{room.max_occupancy || 2} pessoas</span>
-                                </div>
-                                <div className="flex items-center text-sm">
-                                  <Clock className="h-4 w-4 text-gray-400 mr-1" />
-                                  <span>{room.size || '--'} m²</span>
-                                </div>
-                              </div>
-                              
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <div className="flex items-center">
-                                    <DollarSign className="h-4 w-4 text-gray-400 mr-1" />
-                                    <span className="font-bold text-lg">{price.toLocaleString()} MT</span>
-                                    <span className="text-sm text-gray-500 ml-1">/noite</span>
-                                  </div>
-                                  <p className="text-xs text-gray-500">
-                                    {room.extra_adult_price ? `+${room.extra_adult_price} MT/adulto extra` : ''}
-                                  </p>
-                                </div>
-                                
-                                <div className="text-right">
-                                  <div className="text-sm">
-                                    <span className={available === 0 ? "text-red-600" : "text-green-600"}>
-                                      {available === 0 ? 'Esgotado' : `${available} disponíveis`}
-                                    </span>
-                                    <p className="text-xs text-gray-500">
-                                      de {room.total_units || room.totalUnits || 0} unidades
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
+                              <h3 className="font-semibold text-gray-900">{hotel.name || hotel.hotel_name}</h3>
+                              <p className="text-sm text-gray-600">{hotel.address}</p>
+                              <p className="text-xs text-gray-500">{hotel.locality}, {hotel.province}</p>
+                              {hotel.contact_phone && (
+                                <p className="text-xs text-gray-500 mt-1">📞 {hotel.contact_phone}</p>
+                              )}
                             </div>
+                            {isSelected && (
+                              <CheckCircle className="h-5 w-5 text-blue-500 ml-auto flex-shrink-0" />
+                            )}
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
-              {selectedHotelId && roomTypes.length === 0 && (
-                <div className="text-center py-8">
-                  <Bed className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600">Nenhum tipo de quarto disponível neste hotel</p>
-                  <p className="text-sm text-gray-500 mb-4">Adicione tipos de quarto primeiro</p>
-                  <Link href={`/hotels/${selectedHotelId}/rooms/create`}>
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Adicionar Tipo de Quarto
-                    </Button>
-                  </Link>
+              {selectedHotelId && selectedHotelId !== 'undefined' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label>Selecione um Tipo de Quarto *</Label>
+                    <span className="text-sm text-gray-500">
+                      {roomTypes.length} tipo(s) disponível(is)
+                    </span>
+                  </div>
+                  
+                  {roomTypes.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Bed className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-600">Nenhum tipo de quarto disponível neste hotel</p>
+                      <p className="text-sm text-gray-500 mb-4">Adicione tipos de quarto primeiro</p>
+                      <Link href={`/hotels/${selectedHotelId}/room-types/create`}>
+                        <Button>
+                          <Plus className="mr-2 h-4 w-4" />
+                          Adicionar Tipo de Quarto
+                        </Button>
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-4">
+                      {roomTypes.map((room) => {
+                        const roomId = room.id || room.room_type_id;
+                        const isSelected = selectedRoomTypeId === roomId;
+                        const available = room.available_units || room.availableUnits || 0;
+                        const price = parseFloat(room.base_price || room.basePrice || '0');
+                        const maxOccupancy = room.max_occupancy || room.maxOccupancy || 2;
+                        
+                        return (
+                          <div
+                            key={roomId}
+                            className={cn(
+                              "border rounded-lg p-4 cursor-pointer transition-all",
+                              isSelected
+                                ? "border-blue-500 bg-blue-50"
+                                : available === 0
+                                ? "border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed"
+                                : "border-gray-200 hover:border-gray-300"
+                            )}
+                            onClick={() => {
+                              if (available > 0) {
+                                console.log('🛏️ BookingCreatePage: Room type selecionado:', roomId);
+                                setSelectedRoomTypeId(roomId);
+                              }
+                            }}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2 mb-2">
+                                  <h3 className="font-semibold text-gray-900">{room.name || room.room_type_name}</h3>
+                                  {isSelected && (
+                                    <CheckCircle className="h-5 w-5 text-blue-500" />
+                                  )}
+                                  {room.is_active === false && (
+                                    <Badge variant="destructive" className="ml-2">Inativo</Badge>
+                                  )}
+                                </div>
+                                
+                                <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                                  {room.description || 'Sem descrição'}
+                                </p>
+                                
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                  <div className="flex items-center text-sm">
+                                    <Bed className="h-4 w-4 text-gray-400 mr-1" />
+                                    <span>{room.bed_type || 'Standard'}</span>
+                                  </div>
+                                  <div className="flex items-center text-sm">
+                                    <Users className="h-4 w-4 text-gray-400 mr-1" />
+                                    <span>{room.base_occupancy || 1}-{maxOccupancy} pessoas</span>
+                                  </div>
+                                  {room.size && (
+                                    <div className="flex items-center text-sm">
+                                      <Clock className="h-4 w-4 text-gray-400 mr-1" />
+                                      <span>{room.size} m²</span>
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="flex items-center">
+                                      <DollarSign className="h-4 w-4 text-gray-400 mr-1" />
+                                      <span className="font-bold text-lg">{price.toLocaleString('pt-MZ')} MT</span>
+                                      <span className="text-sm text-gray-500 ml-1">/noite</span>
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      {room.extra_adult_price ? `+${room.extra_adult_price} MT/adulto extra` : ''}
+                                      {room.extra_child_price ? `, +${room.extra_child_price} MT/criança` : ''}
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="text-right">
+                                    <div className="text-sm">
+                                      <span className={cn(
+                                        "font-medium",
+                                        available === 0 ? "text-red-600" : "text-green-600"
+                                      )}>
+                                        {available === 0 ? 'ESGOTADO' : `${available} disponível(is)`}
+                                      </span>
+                                      <p className="text-xs text-gray-500">
+                                        Total: {room.total_units || room.totalUnits || 0} unidades
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -706,7 +1020,7 @@ export default function BookingCreatePage() {
                 </div>
 
                 {/* Resumo do Hotel e Quarto */}
-                {selectedRoom && hotels.find(h => (h.id || h.hotel_id) === selectedHotelId) && (
+                {selectedRoom && getSelectedHotel() && (
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
                       <Building2 className="h-5 w-5 text-gray-400 mr-2" />
@@ -716,7 +1030,7 @@ export default function BookingCreatePage() {
                       <div>
                         <p className="text-sm text-gray-600">Hotel</p>
                         <p className="font-medium">
-                          {hotels.find(h => (h.id || h.hotel_id) === selectedHotelId)?.name || 'Hotel'}
+                          {getSelectedHotel()?.name || getSelectedHotel()?.hotel_name || 'Hotel'}
                         </p>
                       </div>
                       <div>
@@ -727,13 +1041,13 @@ export default function BookingCreatePage() {
                         <div>
                           <p className="text-sm text-gray-600">Preço por noite</p>
                           <p className="font-medium">
-                            {(selectedRoom.base_price || selectedRoom.basePrice || 0).toLocaleString()} MT
+                            {parseFloat(selectedRoom.base_price || selectedRoom.basePrice || '0').toLocaleString('pt-MZ')} MT
                           </p>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600">Capacidade</p>
                           <p className="font-medium">
-                            {(selectedRoom.base_occupancy || 1)}-{(selectedRoom.max_occupancy || 2)} pessoas
+                            {(selectedRoom.base_occupancy || 1)}-{(selectedRoom.max_occupancy || selectedRoom.maxOccupancy || 2)} pessoas
                           </p>
                         </div>
                       </div>
@@ -751,28 +1065,34 @@ export default function BookingCreatePage() {
                     <div className="flex justify-between">
                       <span className="text-gray-600">Preço base ({totalNights} noites × {formData.units} unidades)</span>
                       <span>
-                        {((selectedRoom?.base_price || 0) * totalNights * formData.units).toLocaleString()} MT
+                        {((parseFloat(selectedRoom?.base_price || '0') || 0) * totalNights * formData.units).toLocaleString('pt-MZ')} MT
                       </span>
                     </div>
                     
-                    {formData.adults > (selectedRoom?.base_occupancy || 2) && (
+                    {selectedRoom && formData.adults > (selectedRoom.base_occupancy || 2) && (
                       <div className="flex justify-between">
                         <span className="text-gray-600">
-                          Adultos extras ({formData.adults - (selectedRoom?.base_occupancy || 2)} × {totalNights} noites)
+                          Adultos extras ({formData.adults - (selectedRoom.base_occupancy || 2)} × {totalNights} noites)
                         </span>
                         <span>
-                          {((selectedRoom?.extra_adult_price || 0) * (formData.adults - (selectedRoom?.base_occupancy || 2)) * totalNights * formData.units).toLocaleString()} MT
+                          {((parseFloat(selectedRoom.extra_adult_price || '0') || 0) * 
+                            (formData.adults - (selectedRoom.base_occupancy || 2)) * 
+                            totalNights * 
+                            formData.units).toLocaleString('pt-MZ')} MT
                         </span>
                       </div>
                     )}
                     
-                    {formData.children > 0 && (
+                    {selectedRoom && formData.children > 0 && (
                       <div className="flex justify-between">
                         <span className="text-gray-600">
                           Crianças ({formData.children} × {totalNights} noites)
                         </span>
                         <span>
-                          {((selectedRoom?.extra_child_price || 0) * formData.children * totalNights * formData.units).toLocaleString()} MT
+                          {((parseFloat(selectedRoom.extra_child_price || '0') || 0) * 
+                            formData.children * 
+                            totalNights * 
+                            formData.units).toLocaleString('pt-MZ')} MT
                         </span>
                       </div>
                     )}
@@ -780,7 +1100,7 @@ export default function BookingCreatePage() {
                     <div className="border-t pt-2">
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span>{totalPrice.toLocaleString()} MT</span>
+                        <span>{totalPrice.toLocaleString('pt-MZ')} MT</span>
                       </div>
                     </div>
                   </div>
@@ -817,6 +1137,9 @@ export default function BookingCreatePage() {
                     className="h-12"
                   />
                 </div>
+
+                {/* ✅✅✅ CORREÇÃO: Adicionar Badge import */}
+                <Badge variant="outline" className="hidden">Placeholder para Badge</Badge>
               </CardContent>
             </Card>
 

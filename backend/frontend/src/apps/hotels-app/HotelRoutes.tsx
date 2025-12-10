@@ -1,16 +1,18 @@
-// src/apps/hotels-app/HotelRoutes.tsx
-import { Route, Switch } from 'wouter';
-import HotelLayout from './pages/layouts/HotelLayout';
+// src/apps/hotels-app/HotelRoutes.tsx - VERSÃO FINAL SIMPLIFICADA
+import { Route } from 'wouter';
 
-// Importar todas as páginas
-import HotelsDashboard from './pages/dashboard/HotelDashboard';
+// Importar páginas
 import HotelsHome from './pages/home';
+import HotelDetailsPage from './pages/[hotelId]';
+import HotelDashboard from './pages/dashboard/HotelDashboard';
 import HotelCreatePage from './pages/create/HotelCreatePage';
 import HotelEditPage from './pages/[hotelId]/edit/HotelEditPage';
-import RoomListPage from './pages/[hotelId]/rooms/RoomListPage';
-import RoomCreatePage from './pages/[hotelId]/rooms/create/RoomCreatePage';
-import RoomEditPage from './pages/[hotelId]/rooms/edit/RoomEditPage';
-import RoomDetailsPage from './pages/[hotelId]/rooms/[roomId]/RoomDetailsPage';
+
+import RoomTypeListPage from './pages/[hotelId]/room-types/RoomTypeListPage';
+import RoomTypeCreatePage from './pages/[hotelId]/room-types/create/RoomTypeCreatePage';
+import RoomTypeEditPage from './pages/[hotelId]/room-types/edit/RoomTypeEditPage';
+import RoomTypeDetailsPage from './pages/[hotelId]/room-types/[roomTypeId]/RoomTypeDetailsPage';
+
 import AvailabilityPage from './pages/[hotelId]/availability/AvailabilityPage';
 import BookingListPage from './pages/bookings/BookingListPage';
 import BookingDetailsPage from './pages/bookings/[bookingId]/BookingDetailsPage';
@@ -21,133 +23,226 @@ import HotelSettingsPage from './pages/settings/HotelSettingsPage';
 import AccountSettingsPage from './pages/settings/AccountSettingsPage';
 import BillingPage from './pages/settings/BillingPage';
 
-// Componente wrapper que combina layout + conteúdo
-function HotelPageWrapper({ children }: { children: React.ReactNode }) {
-  return <HotelLayout>{children}</HotelLayout>;
-}
-
 export default function HotelRoutes() {
+  console.log('🏨 HotelRoutes carregado');
+  
   return (
-    <Switch>
-      {/* Rotas Principais */}
-      <Route path="/hotels/dashboard">
-        <HotelPageWrapper>
-          <HotelsDashboard />
-        </HotelPageWrapper>
-      </Route>
+    <>
+      {/* ⭐⭐ ORDEM CRÍTICA: Mais específicas primeiro! ⭐⭐ */}
       
-      <Route path="/hotels/create">
-        <HotelPageWrapper>
-          <HotelCreatePage />
-        </HotelPageWrapper>
-      </Route>
-      
-      {/* Gestão de Reservas */}
-      <Route path="/hotels/bookings">
-        <HotelPageWrapper>
-          <BookingListPage />
-        </HotelPageWrapper>
-      </Route>
-      
-      <Route path="/hotels/bookings/create">
-        <HotelPageWrapper>
-          <BookingCreatePage />
-        </HotelPageWrapper>
-      </Route>
-      
-      <Route path="/hotels/bookings/:bookingId">
-        {(params) => (
-          <HotelPageWrapper>
-            <BookingDetailsPage />
-          </HotelPageWrapper>
+      {/* ========== ROTA DEBUG ========== */}
+      <Route path="/hotels/debug">
+        {() => (
+          <div className="min-h-screen bg-gray-50 p-8">
+            <div className="max-w-4xl mx-auto">
+              <div className="bg-white rounded-xl shadow-lg p-8 border-2 border-blue-300">
+                <h1 className="text-3xl font-bold text-blue-700 mb-6">✅ Sistema de Rotas Hoteleiro</h1>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <h3 className="font-bold text-blue-800 mb-2">Páginas SEM selector:</h3>
+                    <ul className="space-y-1 text-sm">
+                      <li>• /hotels/:hotelId (dashboard específico)</li>
+                      <li>• /hotels/:hotelId/room-types</li>
+                      <li>• /hotels/:hotelId/edit</li>
+                      <li>• /hotels/:hotelId/availability</li>
+                      <li>• /hotels/:hotelId/room-types/create</li>
+                      <li>• /hotels/:hotelId/room-types/:roomTypeId</li>
+                      <li>• /hotels/:hotelId/room-types/:roomTypeId/edit</li>
+                    </ul>
+                  </div>
+                  <div className="p-4 bg-green-50 rounded-lg">
+                    <h3 className="font-bold text-green-800 mb-2">Páginas COM selector:</h3>
+                    <ul className="space-y-1 text-sm">
+                      <li>✅ /hotels (home principal)</li>
+                      <li>✅ /hotels/dashboard (global)</li>
+                      <li>✅ /hotels/analytics</li>
+                      <li>✅ /hotels/bookings</li>
+                      <li>✅ /hotels/create</li>
+                      <li>✅ /hotels/settings</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <a 
+                    href="/hotels" 
+                    className="inline-block px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
+                  >
+                    Ir para Home (COM selector)
+                  </a>
+                  <a 
+                    href="/hotels/test-id" 
+                    className="inline-block px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 ml-3"
+                  >
+                    Ir para Dashboard Hotel (SEM selector)
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </Route>
       
-      {/* Análises e Relatórios */}
-      <Route path="/hotels/analytics">
-        <HotelPageWrapper>
-          <AnalyticsPage />
-        </HotelPageWrapper>
+      {/* ========== ROTAS SEM hotelId ========== */}
+      {/* Dashboard Global - COM selector */}
+      <Route path="/hotels/dashboard">
+        <PageContainer>
+          <HotelDashboard />
+        </PageContainer>
       </Route>
       
-      <Route path="/hotels/reports">
-        <HotelPageWrapper>
+      {/* Criar Hotel - COM selector */}
+      <Route path="/hotels/create">
+        <PageContainer>
+          <HotelCreatePage />
+        </PageContainer>
+      </Route>
+      
+      {/* Reservas - COM selector */}
+      <Route path="/hotels/bookings/create">
+        <PageContainer>
+          <BookingCreatePage />
+        </PageContainer>
+      </Route>
+      
+      <Route path="/hotels/bookings/:bookingId">
+        <PageContainer>
+          <BookingDetailsPage />
+        </PageContainer>
+      </Route>
+      
+      <Route path="/hotels/bookings">
+        <PageContainer>
+          <BookingListPage />
+        </PageContainer>
+      </Route>
+      
+      {/* Análises - COM selector */}
+      <Route path="/hotels/analytics/reports">
+        <PageContainer>
           <ReportsPage />
-        </HotelPageWrapper>
+        </PageContainer>
       </Route>
       
-      {/* Configurações */}
-      <Route path="/hotels/settings">
-        <HotelPageWrapper>
-          <HotelSettingsPage />
-        </HotelPageWrapper>
+      <Route path="/hotels/analytics">
+        <PageContainer>
+          <AnalyticsPage />
+        </PageContainer>
       </Route>
       
+      {/* Configurações - COM selector */}
       <Route path="/hotels/settings/account">
-        <HotelPageWrapper>
+        <PageContainer>
           <AccountSettingsPage />
-        </HotelPageWrapper>
+        </PageContainer>
       </Route>
       
       <Route path="/hotels/settings/billing">
-        <HotelPageWrapper>
+        <PageContainer>
           <BillingPage />
-        </HotelPageWrapper>
+        </PageContainer>
       </Route>
       
-      {/* Rotas com hotelId */}
-      <Route path="/hotels/:hotelId/edit">
-        <HotelPageWrapper>
-          <HotelEditPage />
-        </HotelPageWrapper>
+      <Route path="/hotels/settings">
+        <PageContainer>
+          <HotelSettingsPage />
+        </PageContainer>
       </Route>
       
-      <Route path="/hotels/:hotelId/rooms">
-        <HotelPageWrapper>
-          <RoomListPage />
-        </HotelPageWrapper>
+      {/* ========== ROTAS COM hotelId ========== */}
+      {/* ⭐ MAIS ESPECÍFICAS PRIMEIRO! ⭐ */}
+      
+      {/* Room Type Edit - SEM selector */}
+      <Route path="/hotels/:hotelId/room-types/:roomTypeId/edit">
+        <PageContainer>
+          <RoomTypeEditPage />
+        </PageContainer>
       </Route>
       
-      <Route path="/hotels/:hotelId/rooms/create">
-        <HotelPageWrapper>
-          <RoomCreatePage />
-        </HotelPageWrapper>
+      {/* Room Type Details - SEM selector */}
+      <Route path="/hotels/:hotelId/room-types/:roomTypeId">
+        <PageContainer>
+          <RoomTypeDetailsPage />
+        </PageContainer>
       </Route>
       
-      <Route path="/hotels/:hotelId/rooms/:roomId/edit">
-        <HotelPageWrapper>
-          <RoomEditPage />
-        </HotelPageWrapper>
+      {/* Criar Room Type - SEM selector */}
+      <Route path="/hotels/:hotelId/room-types/create">
+        <PageContainer>
+          <RoomTypeCreatePage />
+        </PageContainer>
       </Route>
       
-      <Route path="/hotels/:hotelId/rooms/:roomId">
-        <HotelPageWrapper>
-          <RoomDetailsPage />
-        </HotelPageWrapper>
+      {/* Listar Room Types - SEM selector */}
+      <Route path="/hotels/:hotelId/room-types">
+        <PageContainer>
+          <RoomTypeListPage />
+        </PageContainer>
       </Route>
       
+      {/* Disponibilidade - SEM selector */}
       <Route path="/hotels/:hotelId/availability">
-        <HotelPageWrapper>
+        <PageContainer>
           <AvailabilityPage />
-        </HotelPageWrapper>
+        </PageContainer>
       </Route>
       
-      {/* Rota padrão - Página inicial */}
+      {/* Editar Hotel - SEM selector */}
+      <Route path="/hotels/:hotelId/edit">
+        <PageContainer>
+          <HotelEditPage />
+        </PageContainer>
+      </Route>
+      
+      {/* Dashboard Específico do Hotel - SEM SELECTOR! */}
+      <Route path="/hotels/:hotelId">
+        <PageContainer>
+          <HotelDetailsPage />
+        </PageContainer>
+      </Route>
+      
+      {/* ========== ROTA HOME (DEVE SER A ÚLTIMA!) ========== */}
+      {/* COM SELECTOR! */}
       <Route path="/hotels">
-        <HotelPageWrapper>
+        <PageContainer>
           <HotelsHome />
-        </HotelPageWrapper>
+        </PageContainer>
       </Route>
       
-      {/* Fallback - qualquer outra rota dentro de /hotels */}
+      {/* ========== ROTA 404 ========== */}
       <Route path="/hotels/:rest*">
-        <HotelPageWrapper>
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Página não encontrada</h2>
-            <p className="text-gray-600">Esta rota não existe no sistema de gestão hoteleira.</p>
+        {() => (
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center p-8">
+            <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 text-center border-2 border-red-300">
+              <div className="w-20 h-20 mx-auto mb-6 flex items-center justify-center bg-red-100 rounded-full">
+                <span className="text-3xl">❌</span>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">404 - Página não encontrada</h2>
+              <p className="text-gray-600 mb-6">
+                Esta página não existe no sistema hoteleiro.
+              </p>
+              <div className="space-y-3">
+                <a 
+                  href="/hotels" 
+                  className="block w-full px-4 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
+                >
+                  Ir para Home (COM selector)
+                </a>
+                <a 
+                  href="/hotels/debug" 
+                  className="block w-full px-4 py-3 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700"
+                >
+                  Página de Debug
+                </a>
+              </div>
+            </div>
           </div>
-        </HotelPageWrapper>
+        )}
       </Route>
-    </Switch>
+    </>
   );
+}
+
+// Container genérico para todas as páginas
+function PageContainer({ children }: { children: React.ReactNode }) {
+  return <div className="min-h-screen bg-gray-50">{children}</div>;
 }

@@ -22,7 +22,8 @@ import {
   Clock,
   Star,
   HelpCircle,
-  ArrowRight
+  ArrowRight,
+  Layers
 } from 'lucide-react';
 import { Badge } from '@/shared/components/ui/badge';
 import { apiService } from '@/services/api';
@@ -49,28 +50,36 @@ export default function HotelsHome() {
       try {
         const response = await apiService.getAllHotels();
         
-        if (response.success && response.data) {
-          const hotelsList = Array.isArray(response.data) ? response.data : [];
+        if (response.success) {
+          const hotelsList = Array.isArray(response.data) ? response.data : 
+                           Array.isArray(response.hotels) ? response.hotels : 
+                           Array.isArray(response) ? response : [];
           
           // Calcular estatísticas
           let totalRooms = 0;
           let availableRooms = 0;
           let roomTypes = 0;
           
-          // Para cada hotel, buscar quartos
-          for (const hotel of hotelsList.slice(0, 3)) { // Limitar a 3 hotéis para performance
+          // Para cada hotel, buscar quartos (limitado para performance)
+          const hotelsToProcess = hotelsList.slice(0, 3);
+          for (const hotel of hotelsToProcess) {
             const hotelId = hotel.id || hotel.hotel_id;
             if (hotelId) {
-              const roomsResponse = await apiService.getRoomTypesByHotel(hotelId);
-              if (roomsResponse.success && roomsResponse.data) {
-                const rooms = Array.isArray(roomsResponse.data) ? roomsResponse.data : [];
-                roomTypes += rooms.length;
-                totalRooms += rooms.reduce((sum: number, room: any) => 
-                  sum + (room.total_units || room.totalUnits || 0), 0
-                );
-                availableRooms += rooms.reduce((sum: number, room: any) => 
-                  sum + (room.available_units || room.availableUnits || 0), 0
-                );
+              try {
+                const roomsResponse = await apiService.getRoomTypesByHotel(hotelId);
+                if (roomsResponse.success) {
+                  const rooms = Array.isArray(roomsResponse.data) ? roomsResponse.data : 
+                               Array.isArray(roomsResponse.roomTypes) ? roomsResponse.roomTypes : [];
+                  roomTypes += rooms.length;
+                  totalRooms += rooms.reduce((sum: number, room: any) => 
+                    sum + (room.total_units || room.totalUnits || 0), 0
+                  );
+                  availableRooms += rooms.reduce((sum: number, room: any) => 
+                    sum + (room.available_units || room.availableUnits || 0), 0
+                  );
+                }
+              } catch (error) {
+                console.log(`Erro ao buscar quartos do hotel ${hotelId}:`, error);
               }
             }
           }
@@ -104,7 +113,7 @@ export default function HotelsHome() {
   // Última atividade (simulação)
   const recentActivity = [
     { type: 'booking', message: 'Nova reserva no Hotel Premium Maputo', time: 'há 2 horas', icon: Calendar },
-    { type: 'room', message: 'Quarto "Suite Vista Mar" atualizado', time: 'há 4 horas', icon: Bed },
+    { type: 'room', message: 'Tipo de quarto "Suite Vista Mar" atualizado', time: 'há 4 horas', icon: Layers },
     { type: 'hotel', message: 'Hotel "Beira Resort" adicionado', time: 'Ontem', icon: Building2 },
     { type: 'payment', message: 'Pagamento recebido: 25,000 MT', time: 'há 2 dias', icon: DollarSign },
   ];
@@ -133,7 +142,7 @@ export default function HotelsHome() {
           <div>
             <h1 className="text-3xl font-bold mb-2">Bem-vindo ao Gestão Hoteleira</h1>
             <p className="text-blue-100 mb-4">
-              Gerencie todos os seus hotéis, quartos e reservas em um só lugar
+              Gerencie todos os seus hotéis, tipos de quarto e reservas em um só lugar
             </p>
             <div className="flex flex-wrap gap-4">
               <Badge className="bg-blue-500 text-white">
@@ -141,8 +150,8 @@ export default function HotelsHome() {
                 {stats.totalHotels} Hotel{stats.totalHotels !== 1 ? 's' : ''}
               </Badge>
               <Badge className="bg-green-500 text-white">
-                <Bed className="h-3 w-3 mr-1" />
-                {stats.totalRooms} Quarto{stats.totalRooms !== 1 ? 's' : ''}
+                <Layers className="h-3 w-3 mr-1" />
+                {stats.roomTypes} Tipo{stats.roomTypes !== 1 ? 's' : ''} de Quarto
               </Badge>
               <Badge className="bg-purple-500 text-white">
                 <TrendingUp className="h-3 w-3 mr-1" />
@@ -262,15 +271,15 @@ export default function HotelsHome() {
           <CardContent className="pt-6">
             <div className="flex items-center">
               <div className="p-3 bg-green-500 rounded-lg">
-                <Bed className="h-6 w-6 text-white" />
+                <Layers className="h-6 w-6 text-white" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Quartos Disponíveis</p>
+                <p className="text-sm font-medium text-gray-600">Tipos de Quarto</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {stats.availableRooms}/{stats.totalRooms}
+                  {stats.roomTypes}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {stats.roomTypes} tipo{stats.roomTypes !== 1 ? 's' : ''} de quarto
+                  Total de categorias
                 </p>
               </div>
             </div>
@@ -386,7 +395,7 @@ export default function HotelsHome() {
                               {hotel.rating && (
                                 <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
                                   <Star className="h-3 w-3 mr-1" />
-                                  {parseFloat(hotel.rating).toFixed(1)}
+                                  {parseFloat(hotel.rating.toString()).toFixed(1)}
                                 </Badge>
                               )}
                             </div>
@@ -395,10 +404,10 @@ export default function HotelsHome() {
                         <div className="flex space-x-2">
                           {hotelId && (
                             <>
-                              <Link href={`/hotels/${hotelId}/rooms`}>
+                              <Link href={`/hotels/${hotelId}/room-types`}>
                                 <Button variant="outline" size="sm">
-                                  <Bed className="h-4 w-4 mr-1" />
-                                  Quartos
+                                  <Layers className="h-4 w-4 mr-1" />
+                                  Tipos de Quarto
                                 </Button>
                               </Link>
                               <Link href={`/hotels/${hotelId}/edit`}>
@@ -434,7 +443,7 @@ export default function HotelsHome() {
                     Nenhum hotel cadastrado
                   </h3>
                   <p className="text-gray-600 mb-6">
-                    Comece criando seu primeiro hotel para gerenciar quartos e reservas.
+                    Comece criando seu primeiro hotel para gerenciar tipos de quarto e reservas.
                   </p>
                   <Link href="/hotels/create">
                     <Button className="bg-blue-600 hover:bg-blue-700">
@@ -503,10 +512,10 @@ export default function HotelsHome() {
               </Link>
               
               {hotels && hotels.length > 0 && (
-                <Link href={`/hotels/${getHotelId(hotels[0])}/rooms/create`}>
+                <Link href={`/hotels/${getHotelId(hotels[0])}/room-types/create`}>
                   <Button variant="outline" className="w-full justify-start">
                     <Plus className="mr-2 h-4 w-4" />
-                    Adicionar Quarto
+                    Adicionar Tipo de Quarto
                   </Button>
                 </Link>
               )}
@@ -538,11 +547,11 @@ export default function HotelsHome() {
               
               <div className="p-3 bg-green-50 rounded-lg">
                 <div className="flex items-center mb-2">
-                  <Bed className="h-4 w-4 text-green-600 mr-2" />
-                  <h4 className="font-medium text-green-800">Adicione fotos</h4>
+                  <Layers className="h-4 w-4 text-green-600 mr-2" />
+                  <h4 className="font-medium text-green-800">Diversifique tipos de quarto</h4>
                 </div>
                 <p className="text-sm text-green-700">
-                  Quartos com 5+ fotos têm taxa de conversão 3x maior.
+                  Hotéis com 3+ tipos de quarto têm melhor ocupação.
                 </p>
               </div>
               
@@ -565,20 +574,24 @@ export default function HotelsHome() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <Link href="#">
-                  <Button variant="outline" className="w-full justify-start">
-                    <HelpCircle className="mr-2 h-4 w-4" />
-                    Central de Ajuda
-                  </Button>
-                </Link>
-                <Link href="#">
-                  <Button variant="outline" className="w-full justify-start">
-                    <AlertCircle className="mr-2 h-4 w-4" />
-                    Reportar Problema
-                  </Button>
-                </Link>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => alert('Central de Ajuda em desenvolvimento')}
+                >
+                  <HelpCircle className="mr-2 h-4 w-4" />
+                  Central de Ajuda
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => alert('Funcionalidade de reportar problema em desenvolvimento')}
+                >
+                  <AlertCircle className="mr-2 h-4 w-4" />
+                  Reportar Problema
+                </Button>
                 <p className="text-sm text-gray-500 text-center pt-2">
-                  Suporte disponível
+                  Suporte disponível 24/7
                 </p>
               </div>
             </CardContent>
@@ -599,8 +612,8 @@ export default function HotelsHome() {
               {stats.totalHotels} hotel{stats.totalHotels !== 1 ? 's' : ''}
             </span>
             <span className="text-sm text-gray-500">
-              <Bed className="inline h-4 w-4 mr-1" />
-              {stats.totalRooms} quarto{stats.totalRooms !== 1 ? 's' : ''}
+              <Layers className="inline h-4 w-4 mr-1" />
+              {stats.roomTypes} tipo{stats.roomTypes !== 1 ? 's' : ''} de quarto
             </span>
             <span className="text-sm text-gray-500">
               <DollarSign className="inline h-4 w-4 mr-1" />

@@ -240,10 +240,10 @@ export default function HotelsDashboard() {
               </Button>
             </Link>
             {selectedHotelId && (
-              <Link href={`/hotels/${selectedHotelId}/rooms/create`}>
+              <Link href={`/hotels/${selectedHotelId}/room-types/create`}>
                 <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
                   <Plus className="mr-2 h-4 w-4" />
-                  Novo Quarto
+                  Novo Tipo de Quarto
                 </Button>
               </Link>
             )}
@@ -332,7 +332,7 @@ export default function HotelsDashboard() {
                     Informações do Hotel
                   </h3>
                   {selectedHotel && (
-                    <Link href={`/hotels/edit/${selectedHotel.id}`}>
+                    <Link href={`/hotels/${selectedHotel.id}/edit`}>
                       <Button variant="outline" size="sm">
                         <Edit className="mr-2 h-4 w-4" />
                         Editar
@@ -388,10 +388,10 @@ export default function HotelsDashboard() {
                   Ações Rápidas
                 </h3>
                 <div className="space-y-4">
-                  <Link href={selectedHotelId ? `/hotels/${selectedHotelId}/rooms/create` : '#'}>
+                  <Link href={selectedHotelId ? `/hotels/${selectedHotelId}/room-types/create` : '#'}>
                     <Button className="w-full justify-start" disabled={!selectedHotelId}>
                       <Plus className="mr-3 h-5 w-5" />
-                      Adicionar Quarto
+                      Adicionar Tipo de Quarto
                     </Button>
                   </Link>
                   
@@ -418,10 +418,10 @@ export default function HotelsDashboard() {
         <TabsContent value="rooms" className="space-y-6">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Gestão de Quartos</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Gestão de Tipos de Quarto</h3>
               <p className="text-gray-600">Gerencie os tipos de quarto do seu hotel</p>
             </div>
-            <Link href={selectedHotelId ? `/hotels/${selectedHotelId}/rooms/create` : '#'}>
+            <Link href={selectedHotelId ? `/hotels/${selectedHotelId}/room-types/create` : '#'}>
               <Button disabled={!selectedHotelId}>
                 <Plus className="mr-2 h-4 w-4" />
                 Novo Tipo de Quarto
@@ -432,22 +432,22 @@ export default function HotelsDashboard() {
           {roomsLoading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-2 text-gray-600">Carregando quartos...</p>
+              <p className="mt-2 text-gray-600">Carregando tipos de quarto...</p>
             </div>
           ) : hotelRooms.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <Bed className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Nenhum quarto cadastrado
+                  Nenhum tipo de quarto cadastrado
                 </h3>
                 <p className="text-gray-600 mb-6">
                   Adicione tipos de quarto para começar a receber reservas.
                 </p>
-                <Link href={selectedHotelId ? `/hotels/${selectedHotelId}/rooms/create` : '#'}>
+                <Link href={selectedHotelId ? `/hotels/${selectedHotelId}/room-types/create` : '#'}>
                   <Button disabled={!selectedHotelId}>
                     <Plus className="mr-2 h-4 w-4" />
-                    Criar Primeiro Quarto
+                    Criar Primeiro Tipo de Quarto
                   </Button>
                 </Link>
               </CardContent>
@@ -503,12 +503,16 @@ export default function HotelsDashboard() {
                       {/* Actions */}
                       <div className="flex justify-between pt-4 border-t">
                         <div className="flex space-x-2">
-                          <Button size="sm" variant="outline">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="outline">
-                            <Edit className="h-4 w-4" />
-                          </Button>
+                          <Link href={`/hotels/${selectedHotelId}/room-types/${room.id}`}>
+                            <Button size="sm" variant="outline">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <Link href={`/hotels/${selectedHotelId}/room-types/${room.id}/edit`}>
+                            <Button size="sm" variant="outline">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </Link>
                         </div>
                         <Button size="sm" variant="destructive">
                           <Trash2 className="h-4 w-4" />
@@ -533,8 +537,8 @@ export default function HotelsDashboard() {
               <p className="text-gray-600 mb-6">
                 Visualize e gerencie as reservas do seu hotel.
               </p>
-              <Link href={selectedHotelId ? `/hotels/${selectedHotelId}/bookings` : '#'}>
-                <Button disabled={!selectedHotelId}>
+              <Link href="/hotels/bookings">
+                <Button>
                   Ver Todas as Reservas
                 </Button>
               </Link>
@@ -553,9 +557,11 @@ export default function HotelsDashboard() {
               <p className="text-gray-600 mb-6">
                 Acompanhe métricas e tendências do seu hotel.
               </p>
-              <p className="text-sm text-gray-500">
-                Em breve: Gráficos e relatórios detalhados
-              </p>
+              <Link href="/hotels/analytics">
+                <Button>
+                  Ver Análises Detalhadas
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         </TabsContent>

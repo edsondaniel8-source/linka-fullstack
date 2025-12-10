@@ -1,20 +1,35 @@
 // src/apps/hotels-app/pages/layouts/HotelLayout.tsx
 import React from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { 
   HotelIcon, Home, Settings, HelpCircle, 
   Calendar, BarChart3, Users, Building2,
-  Bed, FileText, CreditCard, TrendingUp,
-  Plus, Shield, Bell, Eye
+  FileText, CreditCard, TrendingUp,
+  Plus, Bell, Eye, Layers,
+  Menu, X, User, LogOut
 } from 'lucide-react';
 
-// REMOVA as importações das páginas específicas - elas serão renderizadas via children
-// import HotelsDashboard from '../dashboard/HotelDashboard';
-// import HotelCreatePage from '../create/HotelCreatePage';
-// etc...
-
-// Componente para renderizar o conteúdo - AGORA RECEBE children
+// Componente para renderizar o conteúdo
 export default function HotelLayout({ children }: { children?: React.ReactNode }) {
+  const [, setLocation] = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+
+  // Verificar se estamos em uma página específica
+  const currentPath = window.location.pathname;
+  const isHotelSelected = currentPath.includes('/hotels/') && 
+                         !currentPath.includes('/hotels/dashboard') &&
+                         !currentPath.includes('/hotels/create');
+
+  // Extrair hotelId se estiver em uma página de hotel
+  const getHotelId = () => {
+    if (!isHotelSelected) return null;
+    const parts = currentPath.split('/');
+    const hotelIndex = parts.indexOf('hotels') + 1;
+    return hotelIndex < parts.length ? parts[hotelIndex] : null;
+  };
+
+  const hotelId = getHotelId();
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Sidebar para desktop */}
@@ -44,6 +59,15 @@ export default function HotelLayout({ children }: { children?: React.ReactNode }
                   </li>
                   <li>
                     <Link 
+                      href="/hotels"
+                      className="group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-gray-700 hover:bg-gray-100 hover:text-blue-600"
+                    >
+                      <Building2 className="h-5 w-5" />
+                      Meus Hotéis
+                    </Link>
+                  </li>
+                  <li>
+                    <Link 
                       href="/hotels/create"
                       className="group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-gray-700 hover:bg-gray-100 hover:text-blue-600"
                     >
@@ -54,43 +78,41 @@ export default function HotelLayout({ children }: { children?: React.ReactNode }
                 </ul>
               </li>
               
-              {/* Gestão */}
-              <li>
-                <div className="text-xs font-semibold leading-6 text-gray-400">Gestão</div>
-                <ul role="list" className="-mx-2 space-y-1">
-                  <li>
-                    <Link 
-                      href="/hotels/bookings"
-                      className="group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-gray-700 hover:bg-gray-100 hover:text-blue-600"
-                    >
-                      <Calendar className="h-5 w-5" />
-                      Reservas
-                    </Link>
-                  </li>
-                  <li>
-                    <Link 
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        alert('Para gerenciar quartos, selecione um hotel primeiro');
-                      }}
-                      className="group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-gray-700 hover:bg-gray-100 hover:text-blue-600"
-                    >
-                      <Bed className="h-5 w-5" />
-                      Quartos
-                    </Link>
-                  </li>
-                  <li>
-                    <Link 
-                      href="#"
-                      className="group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-gray-700 hover:bg-gray-100 hover:text-blue-600"
-                    >
-                      <Users className="h-5 w-5" />
-                      Hóspedes
-                    </Link>
-                  </li>
-                </ul>
-              </li>
+              {/* Gestão - Apenas se hotel estiver selecionado */}
+              {isHotelSelected && hotelId && (
+                <li>
+                  <div className="text-xs font-semibold leading-6 text-gray-400">Gestão do Hotel</div>
+                  <ul role="list" className="-mx-2 space-y-1">
+                    <li>
+                      <Link 
+                        href="/hotels/bookings"
+                        className="group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-gray-700 hover:bg-gray-100 hover:text-blue-600"
+                      >
+                        <Calendar className="h-5 w-5" />
+                        Reservas
+                      </Link>
+                    </li>
+                    <li>
+                      <Link 
+                        href={`/hotels/${hotelId}/room-types`}
+                        className="group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-gray-700 hover:bg-gray-100 hover:text-blue-600"
+                      >
+                        <Layers className="h-5 w-5" />
+                        Tipos de Quarto
+                      </Link>
+                    </li>
+                    <li>
+                      <Link 
+                        href={`/hotels/${hotelId}/availability`}
+                        className="group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-gray-700 hover:bg-gray-100 hover:text-blue-600"
+                      >
+                        <Calendar className="h-5 w-5" />
+                        Disponibilidade
+                      </Link>
+                    </li>
+                  </ul>
+                </li>
+              )}
               
               {/* Análises */}
               <li>
@@ -135,7 +157,7 @@ export default function HotelLayout({ children }: { children?: React.ReactNode }
                       href="/hotels/settings/account"
                       className="group flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-gray-700 hover:bg-gray-100 hover:text-blue-600"
                     >
-                      <Users className="h-5 w-5" />
+                      <User className="h-5 w-5" />
                       Minha Conta
                     </Link>
                   </li>
@@ -171,11 +193,114 @@ export default function HotelLayout({ children }: { children?: React.ReactNode }
                   <HelpCircle className="h-5 w-5 shrink-0" />
                   Ajuda & Suporte
                 </Link>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('authToken');
+                    setLocation('/auth/login');
+                  }}
+                  className="group -mx-2 flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-gray-700 hover:bg-gray-100 hover:text-red-600 w-full text-left"
+                >
+                  <LogOut className="h-5 w-5 shrink-0" />
+                  Sair
+                </button>
               </li>
             </ul>
           </nav>
         </div>
       </div>
+
+      {/* Menu Mobile */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="fixed inset-0 bg-gray-900/80" onClick={() => setMobileMenuOpen(false)} />
+          <div className="fixed inset-y-0 left-0 w-full max-w-xs bg-white">
+            <div className="flex h-16 items-center justify-between border-b border-gray-200 px-6">
+              <div className="flex items-center space-x-3">
+                <HotelIcon className="h-8 w-8 text-blue-600" />
+                <span className="text-xl font-bold text-gray-900">Menu</span>
+              </div>
+              <button
+                type="button"
+                className="rounded-md text-gray-700"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <nav className="p-6">
+              <ul className="space-y-6">
+                <li>
+                  <Link 
+                    href="/hotels/dashboard"
+                    className="flex items-center space-x-3 text-gray-700 hover:text-blue-600"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <TrendingUp className="h-5 w-5" />
+                    <span>Dashboard</span>
+                  </Link>
+                </li>
+                <li>
+                  <Link 
+                    href="/hotels"
+                    className="flex items-center space-x-3 text-gray-700 hover:text-blue-600"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Building2 className="h-5 w-5" />
+                    <span>Meus Hotéis</span>
+                  </Link>
+                </li>
+                <li>
+                  <Link 
+                    href="/hotels/create"
+                    className="flex items-center space-x-3 text-gray-700 hover:text-blue-600"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Plus className="h-5 w-5" />
+                    <span>Criar Hotel</span>
+                  </Link>
+                </li>
+                {isHotelSelected && hotelId && (
+                  <>
+                    <li className="pt-4 border-t">
+                      <span className="text-xs font-semibold text-gray-400">Gestão do Hotel</span>
+                    </li>
+                    <li>
+                      <Link 
+                        href="/hotels/bookings"
+                        className="flex items-center space-x-3 text-gray-700 hover:text-blue-600"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Calendar className="h-5 w-5" />
+                        <span>Reservas</span>
+                      </Link>
+                    </li>
+                    <li>
+                      <Link 
+                        href={`/hotels/${hotelId}/room-types`}
+                        className="flex items-center space-x-3 text-gray-700 hover:text-blue-600"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Layers className="h-5 w-5" />
+                        <span>Tipos de Quarto</span>
+                      </Link>
+                    </li>
+                    <li>
+                      <Link 
+                        href={`/hotels/${hotelId}/availability`}
+                        className="flex items-center space-x-3 text-gray-700 hover:text-blue-600"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Calendar className="h-5 w-5" />
+                        <span>Disponibilidade</span>
+                      </Link>
+                    </li>
+                  </>
+                )}
+              </ul>
+            </nav>
+          </div>
+        </div>
+      )}
 
       {/* Conteúdo Principal */}
       <div className="lg:pl-64">
@@ -183,28 +308,43 @@ export default function HotelLayout({ children }: { children?: React.ReactNode }
         <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
           <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
             <div className="flex items-center gap-x-4 lg:gap-x-6">
-              <div className="lg:hidden">
-                <button className="p-2 -ml-2">
-                  <HotelIcon className="h-8 w-8 text-blue-600" />
-                </button>
-              </div>
+              <button 
+                className="lg:hidden p-2 -ml-2"
+                onClick={() => setMobileMenuOpen(true)}
+              >
+                <Menu className="h-6 w-6 text-gray-700" />
+              </button>
               <div>
                 <div className="text-sm font-semibold text-gray-900">
                   Sistema de Gestão Hoteleira
                 </div>
                 <div className="text-xs text-gray-500">
-                  Gerencie seus hotéis em um só lugar
+                  {isHotelSelected ? 'Gerenciando hotel selecionado' : 'Gerencie seus hotéis em um só lugar'}
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-x-4 lg:gap-x-6 ml-auto">
               <div className="hidden sm:flex items-center space-x-4">
+                <Link href="/hotels">
+                  <button className="flex items-center text-sm text-gray-700 hover:text-blue-600 px-3 py-1 rounded-lg hover:bg-gray-100">
+                    <Building2 className="h-4 w-4 mr-1" />
+                    Hotéis
+                  </button>
+                </Link>
                 <Link href="/hotels/bookings">
                   <button className="flex items-center text-sm text-gray-700 hover:text-blue-600 px-3 py-1 rounded-lg hover:bg-gray-100">
                     <Calendar className="h-4 w-4 mr-1" />
                     Reservas
                   </button>
                 </Link>
+                {isHotelSelected && hotelId && (
+                  <Link href={`/hotels/${hotelId}/room-types`}>
+                    <button className="flex items-center text-sm text-gray-700 hover:text-blue-600 px-3 py-1 rounded-lg hover:bg-gray-100">
+                      <Layers className="h-4 w-4 mr-1" />
+                      Tipos de Quarto
+                    </button>
+                  </Link>
+                )}
                 <Link href="/hotels/analytics">
                   <button className="flex items-center text-sm text-gray-700 hover:text-blue-600 px-3 py-1 rounded-lg hover:bg-gray-100">
                     <BarChart3 className="h-4 w-4 mr-1" />
@@ -218,23 +358,46 @@ export default function HotelLayout({ children }: { children?: React.ReactNode }
                   </button>
                 </Link>
               </div>
+              <div className="flex items-center space-x-3">
+                <button className="p-2 text-gray-600 hover:text-gray-900">
+                  <Bell className="h-5 w-5" />
+                </button>
+                <div className="hidden lg:flex items-center space-x-2 px-3 py-1 bg-gray-100 rounded-lg">
+                  <User className="h-4 w-4 text-gray-600" />
+                  <span className="text-sm text-gray-700">Perfil</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Conteúdo da Página - AGORA USA children */}
+        {/* Conteúdo da Página */}
         <main className="py-6 sm:py-8">
           <div className="px-4 sm:px-6 lg:px-8">
             {children || (
               <div className="text-center py-12">
                 <div className="max-w-md mx-auto">
-                  <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-red-100 rounded-full">
-                    <Eye className="h-8 w-8 text-red-600" />
+                  <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-blue-100 rounded-full">
+                    <Building2 className="h-8 w-8 text-blue-600" />
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Página não encontrada</h2>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Bem-vindo ao Sistema Hoteleiro</h2>
                   <p className="text-gray-600 mb-6">
-                    A página que você está procurando não existe no sistema de gestão hoteleira.
+                    Gerencie seus hotéis, tipos de quarto e reservas de forma eficiente.
                   </p>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <Link href="/hotels/dashboard">
+                      <button className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center">
+                        <TrendingUp className="h-4 w-4 mr-2" />
+                        Ver Dashboard
+                      </button>
+                    </Link>
+                    <Link href="/hotels/create">
+                      <button className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Criar Hotel
+                      </button>
+                    </Link>
+                  </div>
                 </div>
               </div>
             )}
@@ -246,7 +409,7 @@ export default function HotelLayout({ children }: { children?: React.ReactNode }
           <div className="px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div className="text-sm text-gray-500">
-                © {new Date().getFullYear()} Gestão Hoteleira. Todos os direitos reservados.
+                © {new Date().getFullYear()} Sistema de Gestão Hoteleira. Todos os direitos reservados.
               </div>
               <div className="flex space-x-4 text-sm text-gray-500">
                 <Link 

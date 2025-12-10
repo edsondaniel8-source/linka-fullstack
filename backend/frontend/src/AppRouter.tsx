@@ -1,50 +1,54 @@
-// src/AppRouter.tsx (APENAS a parte relevante)
+// src/AppRouter.tsx - VERSÃO CORRIGIDA
 import { Route, Switch } from 'wouter';
 import SearchRides from './apps/main-app/pages/Rides/search';
-
-// Importar componentes das aplicações
 import MainApp from './apps/main-app/App';
 import DriversApp from './apps/drivers-app/App';
 import AdminApp from './apps/admin-app/App';
-
-// ⭐⭐ MUDAR PARA HotelRoutes ⭐⭐
 import HotelRoutes from './apps/hotels-app/HotelRoutes';
-
-// Importar páginas individuais
 import LoginPage from './pages/login';
 import SignupPage from './pages/signup';
 import NotFoundPage from './pages/not-found';
 
 function AppRouter() {
+  console.log('🔀 AppRouter - Path:', window.location.pathname);
+  console.log('🏨 AppRouter - Verificando rota /hotels...');
+  
   return (
     <Switch>
-      {/* Rotas de autenticação */}
+      {/* 1. Rotas específicas */}
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
-      
-      {/* Nova rota para pesquisa de viagens */}
       <Route path="/rides/search" component={SearchRides} />
       
-      {/* ⭐⭐ Rotas do HotelsApp - Agora usa HotelRoutes ⭐⭐ */}
-      <Route path="/hotels/:rest*">
-        <HotelRoutes />
-      </Route>
+      {/* 2. APLICAÇÃO HOTELS - CORRIGIDO! */}
+      {/* Rota para /hotels exato */}
       <Route path="/hotels">
-        <HotelRoutes />
+        {() => {
+          console.log('✅ Rota /hotels capturada no AppRouter');
+          return <HotelRoutes />;
+        }}
       </Route>
       
-      {/* Rotas das outras aplicações */}
+      {/* Rota para /hotels/* (todas as sub-rotas) */}
+      <Route path="/hotels/*">
+        {() => {
+          console.log('✅ Hotels app capturou tudo sob /hotels/*');
+          return <HotelRoutes />;
+        }}
+      </Route>
+      
+      {/* 3. Outras aplicações */}
+      <Route path="/drivers/*" component={DriversApp} />
       <Route path="/drivers" component={DriversApp} />
-      <Route path="/drivers/:rest*" component={DriversApp} />
       
+      <Route path="/admin/*" component={AdminApp} />
       <Route path="/admin" component={AdminApp} />
-      <Route path="/admin/:rest*" component={AdminApp} />
       
-      {/* Todas as outras rotas vão para a aplicação principal */}
+      {/* 4. Aplicação principal */}
       <Route path="/:rest*" component={MainApp} />
       <Route path="/" component={MainApp} />
       
-      {/* Rota 404 */}
+      {/* 5. 404 */}
       <Route component={NotFoundPage} />
     </Switch>
   );

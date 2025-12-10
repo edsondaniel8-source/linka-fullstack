@@ -155,7 +155,7 @@ export const useHotelRooms = (accommodationId?: string) => {
 
     try {
       const updatedRoom = await apiService.put<HotelRoom>(
-        `/rooms/${roomId}`,
+        `/room-types/${roomId}`,
         updates,
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -175,7 +175,7 @@ export const useHotelRooms = (accommodationId?: string) => {
 
     try {
       await apiService.delete(
-        `/rooms/${roomId}`,
+        `/room-types/${roomId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -193,7 +193,7 @@ export const useHotelRooms = (accommodationId?: string) => {
     try {
       setLoading(true);
       const room = await apiService.get<HotelRoom>(
-        `/rooms/${roomId}`,
+        `/room-types/${roomId}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : undefined }
       );
       setSelectedRoom(room);

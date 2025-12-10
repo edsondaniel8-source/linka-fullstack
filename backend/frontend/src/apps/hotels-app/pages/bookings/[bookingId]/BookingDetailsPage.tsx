@@ -1,57 +1,139 @@
-// src/apps/hotels-app/pages/bookings/[bookingId]/BookingDetailsPage.tsx
+// src/apps/hotels-app/pages/bookings/[bookingId]/BookingDetailsPage.tsx - VERSÃO CORRIGIDA FINAL
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'wouter';
-import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/shared/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Badge } from '@/shared/components/ui/badge';
 import { 
   ArrowLeft, Calendar, User, Mail, Phone, Building2, 
   Bed, DollarSign, Clock, CheckCircle, XCircle, 
-  Printer, Mail as MailIcon, Download, MapPin,
+  Printer, Mail as MailIcon, MapPin,
   Users, CreditCard, FileText, AlertCircle
 } from 'lucide-react';
 import { apiService } from '@/services/api';
 import { useToast } from '@/shared/hooks/use-toast';
 import { formatDateDisplay, formatPrice, getStatusColor } from '@/apps/hotels-app/utils/hotelHelpers';
-import { HotelBookingData, BookingStatus } from '@/types';
+
+// Tipos para a API response
+interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}
+
+interface HotelBookingData {
+  bookingId?: string;
+  booking_id?: string;
+  confirmationCode?: string;
+  confirmation_code?: string;
+  status?: string;
+  guestName?: string;
+  guest_name?: string;
+  guestEmail?: string;
+  guest_email?: string;
+  guestPhone?: string;
+  guest_phone?: string;
+  specialRequests?: string;
+  special_requests?: string;
+  checkIn?: string;
+  checkOut?: string;
+  adults?: number;
+  children?: number;
+  units?: number;
+  basePrice?: number;
+  base_price?: number;
+  extraCharges?: number;
+  totalPrice?: number;
+  total_price?: number;
+  paymentStatus?: string;
+  promoCode?: string;
+  hotelId?: string;
+  hotel_id?: string;
+  roomTypeId?: string;
+  room_type_id?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+type BookingStatus = 'confirmed' | 'pending' | 'cancelled' | 'checked_in' | 'checked_out';
+
+interface HotelDetails {
+  name: string;
+  address?: string;
+  locality?: string;
+  province?: string;
+  check_in_time?: string;
+  check_out_time?: string;
+}
+
+interface RoomDetails {
+  name: string;
+  description?: string;
+  amenities?: string[];
+}
 
 export default function BookingDetailsPage() {
-  const { bookingId } = useParams<{ bookingId: string }>();
+  // 🔥 CORREÇÃO: Parâmetro pode ser undefined
+  const { bookingId } = useParams<{ bookingId?: string }>();
   const { toast } = useToast();
   const [booking, setBooking] = useState<HotelBookingData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [hotelDetails, setHotelDetails] = useState<any>(null);
-  const [roomDetails, setRoomDetails] = useState<any>(null);
+  const [hotelDetails, setHotelDetails] = useState<HotelDetails | null>(null);
+  const [roomDetails, setRoomDetails] = useState<RoomDetails | null>(null);
+
+  // Verificar se bookingId existe
+  if (!bookingId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-red-100 rounded-full">
+            <AlertCircle className="h-8 w-8 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Reserva não encontrada</h2>
+          <p className="text-gray-600 mb-6">
+            O ID da reserva não foi fornecido.
+          </p>
+          <Link href="/hotels/bookings">
+            <Button>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Voltar para Reservas
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   // Buscar detalhes da reserva
   useEffect(() => {
     const fetchBookingDetails = async () => {
-      if (!bookingId) return;
-      
       setLoading(true);
       try {
-        const response = await apiService.getBookingDetails(bookingId);
+        // 🔥 CORREÇÃO: Tipar a resposta da API
+        const response = await apiService.getBookingDetails(bookingId) as ApiResponse<HotelBookingData>;
         
         if (response.success && response.data) {
           const bookingData = response.data;
           setBooking(bookingData);
           
           // Buscar detalhes do hotel
-          if (bookingData.hotelId || bookingData.hotel_id) {
-            const hotelId = bookingData.hotelId || bookingData.hotel_id;
-            const hotelResponse = await apiService.getHotelById(hotelId);
+          const hotelId = bookingData.hotelId || bookingData.hotel_id;
+          if (hotelId) {
+            const hotelResponse = await apiService.getHotelById(hotelId) as ApiResponse<HotelDetails>;
             if (hotelResponse.success && hotelResponse.data) {
               setHotelDetails(hotelResponse.data);
             }
           }
           
           // Buscar detalhes do quarto
-          if (bookingData.hotelId && bookingData.roomTypeId) {
+          const roomHotelId = bookingData.hotelId;
+          const roomTypeId = bookingData.roomTypeId || bookingData.room_type_id;
+          if (roomHotelId && roomTypeId) {
             const roomResponse = await apiService.getRoomTypeDetails(
-              bookingData.hotelId,
-              bookingData.roomTypeId
-            );
+              roomHotelId,
+              roomTypeId
+            ) as ApiResponse<RoomDetails>;
             if (roomResponse.success && roomResponse.data) {
               setRoomDetails(roomResponse.data);
             }
@@ -74,19 +156,19 @@ export default function BookingDetailsPage() {
   }, [bookingId, toast]);
 
   const handleStatusChange = async (newStatus: BookingStatus) => {
-    if (!bookingId) return;
-    
     try {
-      let response;
+      let response: ApiResponse;
+      
       switch (newStatus) {
         case 'cancelled':
-          response = await apiService.cancelBooking(bookingId);
+          // 🔥 CORREÇÃO: Chamar método com parâmetro tipado
+          response = await apiService.cancelBooking(bookingId) as ApiResponse;
           break;
         case 'checked_in':
-          response = await apiService.checkInHotelBooking(bookingId);
+          response = await apiService.checkInHotelBooking(bookingId) as ApiResponse;
           break;
         case 'checked_out':
-          response = await apiService.checkOutHotelBooking(bookingId);
+          response = await apiService.checkOutHotelBooking(bookingId) as ApiResponse;
           break;
         default:
           throw new Error('Ação não suportada');
@@ -100,7 +182,7 @@ export default function BookingDetailsPage() {
         // Recarregar dados
         window.location.reload();
       } else {
-        throw new Error(response.error);
+        throw new Error(response.error || 'Erro ao atualizar status');
       }
     } catch (error: any) {
       toast({
@@ -141,7 +223,6 @@ export default function BookingDetailsPage() {
     if (!booking) return;
     
     try {
-      // Em produção, integrar com serviço de email
       toast({
         title: 'Email enviado!',
         description: 'Email de confirmação enviado para o hóspede.',
@@ -193,6 +274,11 @@ export default function BookingDetailsPage() {
   const nights = booking.checkIn && booking.checkOut 
     ? Math.ceil((new Date(booking.checkOut).getTime() - new Date(booking.checkIn).getTime()) / (1000 * 60 * 60 * 24))
     : 0;
+
+  // 🔥 CORREÇÃO: Converter valores para número
+  const basePrice = Number(booking.basePrice || booking.base_price || 0);
+  const extraCharges = Number(booking.extraCharges || 0);
+  const totalPrice = Number(booking.totalPrice || booking.total_price || 0);
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -271,7 +357,7 @@ export default function BookingDetailsPage() {
                       <p className="font-medium">{booking.guestEmail || booking.guest_email}</p>
                     </div>
                   </div>
-                  {booking.guestPhone || booking.guest_phone && (
+                  {(booking.guestPhone || booking.guest_phone) && (
                     <div>
                       <p className="text-sm text-gray-600 mb-1">Telefone</p>
                       <div className="flex items-center">
@@ -442,22 +528,22 @@ export default function BookingDetailsPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Preço por noite</span>
-                    <span>{formatPrice(booking.basePrice || booking.base_price || 0)}</span>
+                    <span>{formatPrice(basePrice)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">{nights} noite{nights > 1 ? 's' : ''}</span>
-                    <span>{formatPrice((booking.basePrice || booking.base_price || 0) * nights)}</span>
+                    <span>{formatPrice(basePrice * nights)}</span>
                   </div>
-                  {booking.extraCharges && booking.extraCharges > 0 && (
+                  {extraCharges > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-600">Taxas extras</span>
-                      <span>{formatPrice(booking.extraCharges)}</span>
+                      <span>{formatPrice(extraCharges)}</span>
                     </div>
                   )}
                   <div className="border-t pt-2">
                     <div className="flex justify-between font-semibold">
                       <span>Total</span>
-                      <span className="text-lg">{formatPrice(booking.totalPrice || booking.total_price || 0)}</span>
+                      <span className="text-lg">{formatPrice(totalPrice)}</span>
                     </div>
                   </div>
                 </div>
@@ -571,7 +657,6 @@ export default function BookingDetailsPage() {
                   variant="outline" 
                   className="w-full justify-start"
                   onClick={() => {
-                    // Abrir Google Maps com localização do hotel
                     if (hotelDetails?.address) {
                       window.open(`https://maps.google.com/?q=${encodeURIComponent(hotelDetails.address)}`, '_blank');
                     }

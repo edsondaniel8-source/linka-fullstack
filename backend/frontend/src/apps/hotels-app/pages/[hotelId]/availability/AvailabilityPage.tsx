@@ -1,5 +1,5 @@
-// src/apps/hotels-app/pages/[hotelId]/availability/AvailabilityPage.tsx
-import { useState, useEffect } from 'react';
+// src/apps/hotels-app/pages/[hotelId]/availability/AvailabilityPage.tsx - VERSÃO CORRIGIDA
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/shared/components/ui/button';
@@ -24,13 +24,26 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, addDays, differenceInDays } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { apiService } from '@/services/api';
 import { useToast } from '@/shared/hooks/use-toast';
+import type { 
+  AvailabilityResponse,
+  RoomType as ApiRoomType,
+  AvailabilityCheck 
+} from '@/types';
 
-// Definir interfaces
-interface RoomType {
+// ✅ INTERFACE CORRIGIDA para AvailabilityRecord
+interface AvailabilityRecord {
+  date: string;
+  price: number;
+  availableUnits: number;
+  stopSell: boolean;
+}
+
+// ✅ INTERFACE para RoomType local
+interface LocalRoomType {
   id: string;
   name: string;
   type: string;
@@ -38,13 +51,6 @@ interface RoomType {
   totalUnits: number;
   availableUnits: number;
   pricePerNight?: number;
-}
-
-interface AvailabilityRecord {
-  date: string;
-  price: number;
-  availableUnits: number;
-  stopSell: boolean;
 }
 
 // Função utilitária para classes condicionais
@@ -72,61 +78,133 @@ export default function AvailabilityPage() {
 
   const itemsPerPage = 14; // 2 semanas
 
-  // Buscar tipos de quarto do hotel
-  const { data: roomTypes = [], isLoading: roomsLoading } = useQuery({
+  // Buscar tipos de quarto do hotel - VERSÃO CORRIGIDA
+  const { 
+    data: roomTypesData = [], 
+    isLoading: roomsLoading,
+    isError: roomsError,
+    error: roomsErrorDetail 
+  } = useQuery({
     queryKey: ['hotel-room-types', hotelId] as const,
     queryFn: async () => {
       if (!hotelId) return [];
       try {
         const response = await apiService.getRoomTypesByHotel(hotelId);
+        
+        if (!response || typeof response !== 'object') {
+          throw new Error('Resposta inválida do servidor');
+        }
+        
         if (response.success && response.data) {
-          // Converter dados para a interface RoomType
-          return response.data.map((room: any) => ({
-            id: room.id || room.room_type_id || '',
-            name: room.name || room.room_type_name || '',
-            type: room.type || 'standard',
-            basePrice: room.pricePerNight || room.base_price || 0,
-            totalUnits: room.totalRooms || room.total_units || 0,
-            availableUnits: room.availableRooms || room.available_units || 0,
+          // ✅ Converter dados para LocalRoomType
+          const roomTypesArray = Array.isArray(response.data) ? response.data : [];
+          return roomTypesArray.map((room: ApiRoomType): LocalRoomType => ({
+            id: room.id || '',
+            name: room.name || 'Quarto sem nome',
+            type: 'standard',
+            basePrice: typeof room.base_price === 'string' 
+              ? parseFloat(room.base_price) 
+              : (room.base_price as number) || 0,
+            totalUnits: room.total_units || 0,
+            availableUnits: room.available_units || 0,
+            pricePerNight: room.price_per_night || 0
           }));
         }
-        return [];
+        
+        throw new Error(response.error || 'Erro ao buscar tipos de quarto');
       } catch (error) {
         console.error('Erro ao buscar tipos de quarto:', error);
-        return [];
+        throw error;
       }
     },
     enabled: !!hotelId,
+    retry: 1,
+    staleTime: 2 * 60 * 1000,
   });
 
-  // Buscar disponibilidade
-  const { data: availabilityData = [], isLoading: availabilityLoading, refetch } = useQuery({
-    queryKey: ['availability', hotelId, selectedRoomTypeId, startDate.toISOString(), endDate.toISOString()] as const,
+  // ✅ GARANTIR QUE roomTypes É SEMPRE UM ARRAY
+  const roomTypes = useMemo(() => {
+    return Array.isArray(roomTypesData) ? roomTypesData : [];
+  }, [roomTypesData]);
+
+  // Buscar disponibilidade - VERSÃO CORRIGIDA
+  const { 
+    data: availabilityResponse,
+    isLoading: availabilityLoading, 
+    isError: availabilityError,
+    error: availabilityErrorDetail,
+    refetch 
+  } = useQuery({
+    queryKey: ['availability', hotelId, selectedRoomTypeId, format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd')] as const,
     queryFn: async () => {
-      if (!hotelId || !selectedRoomTypeId) return [];
+      if (!hotelId || !selectedRoomTypeId) {
+        return null;
+      }
       
-      // Simulação de dados - em produção, chamaria a API
-      const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-      const data: AvailabilityRecord[] = [];
-      
+      try {
+        // ✅ BUSCAR DISPONIBILIDADE REAL DA API
+        const response = await apiService.checkAvailability({
+          hotelId,
+          roomTypeId: selectedRoomTypeId,
+          checkIn: format(startDate, 'yyyy-MM-dd'),
+          checkOut: format(endDate, 'yyyy-MM-dd'),
+          units: 1
+        });
+
+        return response;
+        
+      } catch (error) {
+        console.error('Erro ao buscar disponibilidade:', error);
+        throw error;
+      }
+    },
+    enabled: !!hotelId && !!selectedRoomTypeId && roomTypes.length > 0,
+    retry: 1,
+  });
+
+  // ✅ CONVERTER RESPOSTA DA API PARA AvailabilityRecord[]
+  const availabilityData: AvailabilityRecord[] = useMemo(() => {
+    if (!availabilityResponse?.success || !availabilityResponse.data) {
+      return [];
+    }
+
+    const data = availabilityResponse.data;
+    
+    // ✅ VERIFICAÇÃO DE TIPO SEGURO
+    if (data.availability && Array.isArray(data.availability)) {
+      // Se a API retornou array de availability
+      return data.availability.map((item: any): AvailabilityRecord => ({
+        date: item.date || format(new Date(), 'yyyy-MM-dd'),
+        price: typeof item.price === 'string' 
+          ? parseFloat(item.price) 
+          : (item.price || 0),
+        availableUnits: item.available_units || item.availableUnits || 0,
+        stopSell: item.stop_sell || item.stopSell || false
+      }));
+    } else {
+      // Fallback: gerar dados baseados no período selecionado
+      const days = differenceInDays(endDate, startDate) + 1;
       const selectedRoom = roomTypes.find(r => r.id === selectedRoomTypeId);
       
+      const fallbackData: AvailabilityRecord[] = [];
       for (let i = 0; i < days; i++) {
-        const date = new Date(startDate);
-        date.setDate(date.getDate() + i);
-        
-        data.push({
-          date: date.toISOString().split('T')[0],
+        const date = addDays(startDate, i);
+        fallbackData.push({
+          date: format(date, 'yyyy-MM-dd'),
           price: selectedRoom?.basePrice || 0,
           availableUnits: selectedRoom?.availableUnits || 0,
           stopSell: false
         });
       }
       
-      return data;
-    },
-    enabled: !!hotelId && !!selectedRoomTypeId && roomTypes.length > 0,
-  });
+      return fallbackData;
+    }
+  }, [availabilityResponse, startDate, endDate, roomTypes, selectedRoomTypeId]);
+
+  // ✅ GARANTIR QUE availabilityData É SEMPRE UM ARRAY
+  const safeAvailabilityData = useMemo(() => {
+    return Array.isArray(availabilityData) ? availabilityData : [];
+  }, [availabilityData]);
 
   // Mutation para atualizar disponibilidade em massa
   const bulkUpdateMutation = useMutation({
@@ -139,22 +217,19 @@ export default function AvailabilityPage() {
       availableUnits?: number;
       stopSell?: boolean;
     }) => {
-      return await apiService.bulkUpdateAvailability(data.hotelId, {
-        roomTypeId: data.roomTypeId,
-        startDate: data.startDate,
-        endDate: data.endDate,
-        price: data.price,
-        availableUnits: data.availableUnits,
-        stopSell: data.stopSell
-      });
+      return await apiService.bulkUpdateAvailability(data.hotelId, data);
     },
-    onSuccess: () => {
-      toast({
-        title: 'Sucesso!',
-        description: 'Disponibilidade atualizada em massa.',
-      });
-      queryClient.invalidateQueries({ queryKey: ['availability'] });
-      refetch();
+    onSuccess: (response) => {
+      if (response.success) {
+        toast({
+          title: 'Sucesso!',
+          description: 'Disponibilidade atualizada em massa.',
+        });
+        queryClient.invalidateQueries({ queryKey: ['availability'] });
+        refetch();
+      } else {
+        throw new Error(response.error || 'Erro ao atualizar disponibilidade');
+      }
     },
     onError: (error: any) => {
       toast({
@@ -173,7 +248,7 @@ export default function AvailabilityPage() {
       date: string;
       data: Partial<AvailabilityRecord>;
     }) => {
-      // Simulação - em produção, chamaria API específica
+      // ✅ EM PRODUÇÃO: Implementar API específica para atualizar uma data
       await new Promise(resolve => setTimeout(resolve, 500));
       return { success: true };
     },
@@ -194,8 +269,8 @@ export default function AvailabilityPage() {
   });
 
   // Calcular páginas
-  const totalPages = Math.ceil(availabilityData.length / itemsPerPage);
-  const paginatedData = availabilityData.slice(
+  const totalPages = Math.ceil(safeAvailabilityData.length / itemsPerPage);
+  const paginatedData = safeAvailabilityData.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
@@ -215,8 +290,8 @@ export default function AvailabilityPage() {
     bulkUpdateMutation.mutate({
       hotelId,
       roomTypeId: selectedRoomTypeId,
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
+      startDate: format(startDate, 'yyyy-MM-dd'),
+      endDate: format(endDate, 'yyyy-MM-dd'),
       price: bulkPrice || undefined,
       availableUnits: bulkUnits || undefined,
       stopSell: bulkStopSell
@@ -259,12 +334,12 @@ export default function AvailabilityPage() {
   };
 
   const exportToCSV = () => {
-    if (!selectedRoom || availabilityData.length === 0) return;
+    if (!selectedRoom || safeAvailabilityData.length === 0) return;
 
     const headers = ['Data', 'Preço (MT)', 'Unidades Disponíveis', 'Status'];
     const csvContent = [
       headers.join(','),
-      ...availabilityData.map(record => [
+      ...safeAvailabilityData.map(record => [
         record.date,
         record.price.toFixed(2),
         record.availableUnits,
@@ -286,6 +361,30 @@ export default function AvailabilityPage() {
     });
   };
 
+  // Tratamento de erros
+  useEffect(() => {
+    if (roomsError) {
+      toast({
+        title: 'Erro ao carregar quartos',
+        description: roomsErrorDetail instanceof Error ? roomsErrorDetail.message : 'Erro desconhecido',
+        variant: 'destructive',
+      });
+    }
+    
+    if (availabilityError) {
+      toast({
+        title: 'Erro ao carregar disponibilidade',
+        description: availabilityErrorDetail instanceof Error ? availabilityErrorDetail.message : 'Erro desconhecido',
+        variant: 'destructive',
+      });
+    }
+  }, [roomsError, roomsErrorDetail, availabilityError, availabilityErrorDetail, toast]);
+
+  // Resetar página quando dados mudarem
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [safeAvailabilityData.length, selectedRoomTypeId]);
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -299,7 +398,7 @@ export default function AvailabilityPage() {
           <Button 
             variant="outline" 
             onClick={exportToCSV} 
-            disabled={availabilityData.length === 0 || !selectedRoom}
+            disabled={safeAvailabilityData.length === 0 || !selectedRoom}
           >
             <Download className="mr-2 h-4 w-4" />
             Exportar CSV
@@ -308,7 +407,7 @@ export default function AvailabilityPage() {
             <RefreshCw className="mr-2 h-4 w-4" />
             Atualizar
           </Button>
-          <Link href={`/hotels/${hotelId}/rooms/create`}>
+          <Link href={`/hotels/${hotelId}/room-types/create`}>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
               Novo Tipo de Quarto
@@ -431,6 +530,7 @@ export default function AvailabilityPage() {
                   id="bulkPrice"
                   type="number"
                   min="0"
+                  step="0.01"
                   value={bulkPrice}
                   onChange={(e) => setBulkPrice(Number(e.target.value))}
                   placeholder={selectedRoom?.basePrice.toString()}
@@ -484,13 +584,13 @@ export default function AvailabilityPage() {
               <CardTitle>Disponibilidade Diária</CardTitle>
               <CardDescription>
                 {selectedRoom 
-                  ? `Mostrando ${availabilityData.length} dias para ${selectedRoom.name}`
+                  ? `Mostrando ${safeAvailabilityData.length} dias para ${selectedRoom.name}`
                   : 'Selecione um tipo de quarto'
                 }
               </CardDescription>
             </div>
             
-            {availabilityData.length > 0 && (
+            {safeAvailabilityData.length > 0 && (
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
                   <Button
@@ -519,10 +619,31 @@ export default function AvailabilityPage() {
         </CardHeader>
         
         <CardContent>
-          {availabilityLoading ? (
+          {roomsLoading || availabilityLoading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
               <p className="mt-2 text-gray-600">Carregando disponibilidade...</p>
+            </div>
+          ) : roomsError || availabilityError ? (
+            <div className="text-center py-12">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
+                <h3 className="text-lg font-medium text-red-800 mb-2">
+                  Erro ao carregar dados
+                </h3>
+                <p className="text-red-600">
+                  {roomsErrorDetail instanceof Error ? roomsErrorDetail.message : 
+                   availabilityErrorDetail instanceof Error ? availabilityErrorDetail.message : 
+                   'Erro desconhecido'}
+                </p>
+                <Button 
+                  onClick={() => refetch()} 
+                  variant="outline" 
+                  className="mt-4"
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Tentar novamente
+                </Button>
+              </div>
             </div>
           ) : !selectedRoomTypeId ? (
             <div className="text-center py-12">
@@ -534,7 +655,7 @@ export default function AvailabilityPage() {
                 Escolha um tipo de quarto para visualizar e editar a disponibilidade.
               </p>
             </div>
-          ) : availabilityData.length === 0 ? (
+          ) : safeAvailabilityData.length === 0 ? (
             <div className="text-center py-12">
               <Filter className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">
@@ -575,6 +696,7 @@ export default function AvailabilityPage() {
                             <Input
                               type="number"
                               min="0"
+                              step="0.01"
                               className="w-32 ml-auto"
                               value={editData.price !== undefined ? editData.price : record.price}
                               onChange={(e) => handleEditChange(record.date, 'price', e.target.value)}
@@ -582,7 +704,7 @@ export default function AvailabilityPage() {
                           ) : (
                             <div className="flex items-center justify-end">
                               <DollarSign className="h-4 w-4 text-gray-400 mr-1" />
-                              {record.price.toLocaleString()}
+                              {record.price.toLocaleString('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
                           )}
                         </TableCell>
@@ -666,14 +788,16 @@ export default function AvailabilityPage() {
       </Card>
 
       {/* Resumo */}
-      {selectedRoom && availabilityData.length > 0 && (
+      {selectedRoom && safeAvailabilityData.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
                 <p className="text-sm text-gray-600 mb-2">Preço Médio</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {Math.round(availabilityData.reduce((sum, r) => sum + r.price, 0) / availabilityData.length).toLocaleString()} MT
+                  {safeAvailabilityData.length > 0
+                    ? Math.round(safeAvailabilityData.reduce((sum, r) => sum + r.price, 0) / safeAvailabilityData.length).toLocaleString()
+                    : 0} MT
                 </p>
               </div>
             </CardContent>
@@ -684,7 +808,7 @@ export default function AvailabilityPage() {
               <div className="text-center">
                 <p className="text-sm text-gray-600 mb-2">Dias Indisponíveis</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {availabilityData.filter(r => r.stopSell).length}
+                  {safeAvailabilityData.filter(r => r.stopSell).length}
                 </p>
               </div>
             </CardContent>
@@ -695,11 +819,11 @@ export default function AvailabilityPage() {
               <div className="text-center">
                 <p className="text-sm text-gray-600 mb-2">Ocupação Média</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {selectedRoom.totalUnits > 0
+                  {selectedRoom.totalUnits > 0 && safeAvailabilityData.length > 0
                     ? Math.round(
-                        ((selectedRoom.totalUnits * availabilityData.length - 
-                          availabilityData.reduce((sum, r) => sum + r.availableUnits, 0)) / 
-                          (selectedRoom.totalUnits * availabilityData.length)) * 100
+                        ((selectedRoom.totalUnits * safeAvailabilityData.length - 
+                          safeAvailabilityData.reduce((sum, r) => sum + r.availableUnits, 0)) / 
+                          (selectedRoom.totalUnits * safeAvailabilityData.length)) * 100
                       )
                     : 0}%
                 </p>

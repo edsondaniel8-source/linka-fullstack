@@ -69,8 +69,8 @@ export interface Hotel {
 
 export interface RoomType {
   id: string;
-  room_type_id: string;
-  room_type_name: string;
+  room_type_id?: string;
+  room_type_name?: string;
   name: string;
 
   hotel_id?: string;
@@ -79,11 +79,12 @@ export interface RoomType {
   amenities?: string[];
   images?: string[];
 
-  base_price: number;
+  base_price: number | string;
   total_units: number;
 
   base_occupancy: number;
   max_occupancy: number;
+  min_nights_default?: number; // ✅ ADICIONADO
 
   size?: string;
   bed_type?: string;
@@ -94,8 +95,8 @@ export interface RoomType {
   price_per_night?: number;
   total_price?: number;
 
-  extra_adult_price?: number;
-  extra_child_price?: number;
+  extra_adult_price?: number | string;
+  extra_child_price?: number | string;
   children_policy?: string;
 
   is_active?: boolean;
@@ -152,40 +153,47 @@ export interface HotelUpdateRequest {
 export interface RoomTypeCreateRequest {
   name: string;
   description?: string;
-  maxOccupancy: number;
-  baseOccupancy?: number;
   basePrice: number;
+  totalUnits: number;
+  baseOccupancy?: number;
+  maxOccupancy?: number;
+  minNightsDefault?: number; 
+  extraAdultPrice?: number;
+  extraChildPrice?: number;
+  amenities?: string[];
+  images?: string[];
+  isActive?: boolean; // ✅ ADICIONADO
+  
+  // Campos opcionais para compatibilidade
   size?: string;
   bedType?: string;
   bedTypes?: string[];
   bathroomType?: string;
-  amenities?: string[];
-  images?: string[];
-  availableUnits: number;
-  totalUnits: number;
-  extraAdultPrice?: number;
-  extraChildPrice?: number;
+  availableUnits?: number;
   childrenPolicy?: string;
 }
 
 export interface RoomTypeUpdateRequest {
   name?: string;
   description?: string;
-  maxOccupancy?: number;
-  baseOccupancy?: number;
   basePrice?: number;
+  totalUnits?: number;
+  baseOccupancy?: number;
+  maxOccupancy?: number;
+  minNightsDefault?: number; // ✅ ADICIONADO
+  extraAdultPrice?: number;
+  extraChildPrice?: number;
+  amenities?: string[];
+  images?: string[];
+  isActive?: boolean; // ✅ ADICIONADO
+  
+  // Campos opcionais para compatibilidade
   size?: string;
   bedType?: string;
   bedTypes?: string[];
   bathroomType?: string;
-  amenities?: string[];
-  images?: string[];
   availableUnits?: number;
-  totalUnits?: number;
-  extraAdultPrice?: number;
-  extraChildPrice?: number;
   childrenPolicy?: string;
-  isActive?: boolean;
 }
 
 export interface BulkAvailabilityUpdate {
@@ -361,6 +369,14 @@ export interface AvailabilityCheck {
   message?: string;
   validation_errors?: string[];
   data?: any;
+  
+  // ✅ CORREÇÃO: ADICIONAR PROPRIEDADE AUSENTE
+  availability?: Array<{
+    date: string;
+    available_units: number;
+    price: number | string;
+    stop_sell?: boolean;
+  }>;
 }
 
 export interface NightlyPrice {

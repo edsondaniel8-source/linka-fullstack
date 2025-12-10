@@ -1,12 +1,10 @@
-// src/services/apiService.ts
+// src/services/apiService.ts - VERSÃO CORRIGIDA (CORS FIX)
 import { auth } from '@/shared/lib/firebaseConfig';
 import { Booking, RideBookingRequest } from '@/shared/types/booking';
 import { formatDateOnly, formatTimeOnly, formatLongDate, formatWeekday, formatDateTime } from '../utils/dateFormatter';
 
 // ====================== IMPORTAÇÕES DOS TIPOS UNIFICADOS ======================
-// ✅ Importamos todos os tipos que vamos usar
 import {
-  // Hotel Types
   Hotel,
   RoomType,
   HotelCreateRequest,
@@ -19,53 +17,37 @@ import {
   RoomTypeListResponse,
   HotelStatistics,
   HotelPerformance,
-  
-  // Search Types
   SearchParams,
   SearchResponse,
   HotelSearchResponse,
-  
-  // Availability Types
   AvailabilityCheck,
   NightlyPrice,
   AvailabilityResponse,
-  
-  // Booking Types
   HotelBookingRequest,
   HotelBookingResponse,
   HotelBookingData,
   MyHotelBookingsResponse,
   BookingStatus,
   PaymentStatus,
-  
-  // Chat Types
   ChatMessage,
   ChatThread,
   SendMessageRequest,
   SendMessageResponse,
-  
-  // Notification Types
   Notification,
   NotificationsResponse,
-  
-  // Upload Types
   UploadResponse,
-  
-  // API Response Types
   ApiResponse,
   HotelByIdResponse,
   RoomTypesResponse,
 } from '../types/index';
 
-// ====================== TIPOS RIDE (usa os do arquivo de tipos agora) ======================
-// ✅ CORRIGIDO: Usar 'export type' para re-exportar tipos
+// ====================== TIPOS RIDE ======================
 export type { Ride as LocalRide } from '../types/index';
 export type { RideSearchParams as LocalRideSearchParams } from '../types/index';
 export type { MatchStats as LocalMatchStats } from '../types/index';
 export type { RideSearchResponse as LocalRideSearchResponse } from '../types/index';
 
 // ====================== FUNÇÕES UTILITÁRIAS RIDES ======================
-
 export function normalizeRide(apiRide: any): any {
   const normalized = {
     ride_id: apiRide.ride_id || apiRide.id || '',
@@ -178,58 +160,229 @@ class ApiService {
   private baseURL: string;
 
   constructor() {
+    // ✅ CORREÇÃO: Usar variável de ambiente ou fallback
     this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    console.log('🚀 ApiService inicializado com baseURL:', this.baseURL);
   }
 
   private async getAuthHeaders(): Promise<Record<string, string>> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = { 
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
     try {
-      const token = await auth.currentUser?.getIdToken() || localStorage.getItem('authToken');
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
+      // ✅ CORREÇÃO: Tentar obter token Firebase primeiro
+      let token: string | null = null;
+      
+      // Prioridade 1: Token do Firebase Auth
+      if (auth.currentUser) {
+        try {
+          token = await auth.currentUser.getIdToken();
+          console.log('🔐 Token obtido do Firebase Auth');
+        } catch (firebaseError) {
+          console.debug('Erro ao obter token do Firebase:', firebaseError);
+        }
       }
+      
+      // Prioridade 2: Token do localStorage (fallback)
+      if (!token) {
+        token = localStorage.getItem('firebaseToken');
+        if (token) {
+          console.log('🔐 Token obtido do localStorage');
+        }
+      }
+      
+      // ✅ CORREÇÃO CRÍTICA: Usar APENAS Authorization header (padrão CORS)
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        
+        // ❌ REMOVER ou comentar headers customizados que causam CORS
+        // headers['X-Firebase-Token'] = token; // Causa erro CORS se não configurado no backend
+        
+        // Para debugging, pode manter mas será removido se causar problemas
+        if (process.env.NODE_ENV === 'development') {
+          // headers['X-Firebase-Token'] = token; // Descomente apenas se backend permitir
+        }
+      }
+      
+      // ✅ Adicionar informações do usuário para debugging (opcional)
+      const userEmail = localStorage.getItem('userEmail');
+      const userUid = localStorage.getItem('userUid');
+      
+      if (userEmail && process.env.NODE_ENV === 'development') {
+        // headers['X-User-Email'] = userEmail; // Descomente apenas se backend permitir
+      }
+      
+      if (userUid && process.env.NODE_ENV === 'development') {
+        // headers['X-User-UID'] = userUid; // Descomente apenas se backend permitir
+      }
+      
     } catch (error) {
       console.debug('Error fetching auth token:', error);
     }
+    
+    console.log('📤 Headers sendo enviados:', Object.keys(headers));
     return headers;
   }
 
   private async request<T>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     endpoint: string,
-    data?: unknown
+    data?: unknown,
+    customHeaders?: Record<string, string>
   ): Promise<T> {
-    const headers = await this.getAuthHeaders();
+    // ✅ CORREÇÃO: Obter headers base
+    const baseHeaders = await this.getAuthHeaders();
+    const headers = { ...baseHeaders, ...customHeaders };
     const url = `${this.baseURL}${endpoint}`;
-    const config: RequestInit = { method, headers, credentials: 'include' };
-    if (data && method !== 'GET') config.body = JSON.stringify(data);
     
-    const response = await fetch(url, config);
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`${response.status}: ${errorText || 'Request failed'}`);
+    // ✅ CORREÇÃO CRÍTICA: Configuração CORS correta
+    const config: RequestInit = { 
+      method, 
+      headers,
+      mode: 'cors', // ✅ Especificar modo CORS
+      credentials: 'include', // ✅ Incluir cookies se necessário
+    };
+    
+    if (data && method !== 'GET') {
+      config.body = JSON.stringify(data);
     }
-    return await response.json() as T;
+    
+    console.log(`🔐 API Request: ${method} ${url}`, { 
+      headers: { 
+        ...headers, 
+        Authorization: headers.Authorization ? 'Bearer ***' : undefined 
+      },
+      hasData: !!data 
+    });
+    
+    try {
+      const response = await fetch(url, config);
+      
+      // ✅ CORREÇÃO: Tratar erros de CORS/network
+      if (!response.ok) {
+        let errorText = 'Erro desconhecido';
+        try {
+          errorText = await response.text();
+        } catch (e) {
+          console.debug('Não foi possível ler texto da resposta');
+        }
+        
+        console.error(`❌ API Error ${response.status}:`, errorText);
+        
+        // Tratamento específico para erros CORS
+        if (response.status === 0) {
+          throw new Error('Erro de CORS/Network: Não foi possível conectar ao servidor. Verifique: \n1. Servidor está rodando\n2. Configurações CORS no backend\n3. Headers permitidos');
+        }
+        
+        // Tratamento para 403 (Forbidden)
+        if (response.status === 403) {
+          throw new Error(`403 Forbidden: Você não tem permissão para acessar este recurso. Token: ${headers.Authorization ? 'Presente' : 'Ausente'}`);
+        }
+        
+        // Tratamento para 401 (Unauthorized)
+        if (response.status === 401) {
+          throw new Error('401 Unauthorized: Sua sessão expirou. Faça login novamente.');
+        }
+        
+        throw new Error(`${response.status}: ${errorText || 'Erro na requisição'}`);
+      }
+      
+      const responseText = await response.text();
+      
+      // ✅ CORREÇÃO: Tentar parsear JSON
+      try {
+        const result = JSON.parse(responseText) as T;
+        console.log(`✅ API Response ${method} ${endpoint}:`, 
+          result && typeof result === 'object' && 'success' in result 
+            ? { success: (result as any).success } 
+            : 'OK'
+        );
+        return result;
+      } catch (jsonError) {
+        // Se não for JSON válido, retornar como texto
+        console.log(`✅ API Response (text): ${responseText.substring(0, 100)}...`);
+        return { success: true, data: responseText } as T;
+      }
+      
+    } catch (error) {
+      console.error('❌ API Request failed:', error);
+      
+      // ✅ CORREÇÃO: Verificar se é erro de CORS específico
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        console.error('🔴 ERRO CORS DETECTADO!');
+        console.error('Soluções possíveis:');
+        console.error('1. Verificar se o backend está rodando em', this.baseURL);
+        console.error('2. Verificar configurações CORS no backend');
+        console.error('3. Remover headers customizados (X-Firebase-Token, etc.)');
+        console.error('4. Usar proxy no Vite/Webpack');
+        
+        throw new Error(`Erro de CORS: Não foi possível conectar a ${this.baseURL}. Verifique as configurações do servidor.`);
+      }
+      
+      throw error;
+    }
   }
 
-  async get<T>(url: string, params?: any): Promise<T> {
+  // Métodos HTTP básicos (mantêm os mesmos)
+  async get<T>(url: string, params?: any, customHeaders?: Record<string, string>): Promise<T> {
     if (params) {
       const queryParams = new URLSearchParams(params).toString();
       url = `${url}${url.includes('?') ? '&' : '?'}${queryParams}`;
     }
-    return this.request<T>('GET', url);
+    return this.request<T>('GET', url, undefined, customHeaders);
   }
 
-  async post<T>(url: string, body?: any): Promise<T> {
-    return this.request<T>('POST', url, body);
+  async post<T>(url: string, body?: any, customHeaders?: Record<string, string>): Promise<T> {
+    return this.request<T>('POST', url, body, customHeaders);
   }
 
-  async put<T>(url: string, body?: any): Promise<T> {
-    return this.request<T>('PUT', url, body);
+  async put<T>(url: string, body?: any, customHeaders?: Record<string, string>): Promise<T> {
+    return this.request<T>('PUT', url, body, customHeaders);
   }
 
-  async delete<T>(url: string): Promise<T> {
-    return this.request<T>('DELETE', url);
+  async delete<T>(url: string, customHeaders?: Record<string, string>): Promise<T> {
+    return this.request<T>('DELETE', url, undefined, customHeaders);
+  }
+
+  // ====================== MÉTODO DE TESTE CORS ======================
+  
+  async testCorsConnection(): Promise<{ success: boolean; message: string; corsWorking: boolean }> {
+    try {
+      // Teste simples sem headers de auth
+      const testUrl = `${this.baseURL}/api/health`;
+      console.log('🧪 Testando conexão CORS para:', testUrl);
+      
+      const response = await fetch(testUrl, {
+        method: 'GET',
+        mode: 'cors',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          success: true,
+          message: `✅ Conexão CORS funcionando! Servidor: ${this.baseURL}`,
+          corsWorking: true
+        };
+      } else {
+        return {
+          success: false,
+          message: `❌ Servidor respondeu com ${response.status}`,
+          corsWorking: false
+        };
+      }
+    } catch (error: any) {
+      return {
+        success: false,
+        message: `❌ Erro CORS: ${error.message}`,
+        corsWorking: false
+      };
+    }
   }
 
   private async rpcRequest<T>(
@@ -248,7 +401,8 @@ class ApiService {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
-      credentials: 'include'
+      credentials: 'include',
+      mode: 'cors'
     });
     
     if (!response.ok) {
@@ -383,7 +537,7 @@ class ApiService {
     return response;
   }
 
-  // ====================== HOTELS API (SIMPLIFICADA) ======================
+  // ====================== HOTELS API ======================
   
   async searchHotels(params: SearchParams): Promise<HotelSearchResponse> {
     try {
@@ -391,6 +545,35 @@ class ApiService {
     } catch (error) {
       return {
         success: false,
+        data: [],
+        hotels: [],
+        count: 0
+      };
+    }
+  }
+
+  // ====================== HOTELS API ======================
+  
+  async getAllHotels(params?: { 
+    limit?: number; 
+    offset?: number;
+    active?: boolean;
+  }): Promise<HotelListResponse> {
+    try {
+      // ✅ CORREÇÃO: Testar CORS primeiro
+      const corsTest = await this.testCorsConnection();
+      if (!corsTest.corsWorking) {
+        console.error('❌ CORS não está funcionando:', corsTest.message);
+        throw new Error(`Problema de CORS: ${corsTest.message}`);
+      }
+      
+      console.log('📡 Buscando todos os hotéis...');
+      return await this.get<HotelListResponse>('/api/v2/hotels', params);
+    } catch (error) {
+      console.error('❌ Erro ao buscar hotéis:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao listar hotéis',
         data: [],
         hotels: [],
         count: 0
@@ -473,21 +656,6 @@ class ApiService {
     }
   }
 
-  async getAllHotels(params?: { 
-    limit?: number; 
-    offset?: number;
-    active?: boolean;
-  }): Promise<HotelListResponse> {
-    try {
-      return await this.get<HotelListResponse>('/api/v2/hotels', params);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Erro ao listar hotéis'
-      };
-    }
-  }
-
   async getHotelStatsDetailed(hotelId: string): Promise<ApiResponse<HotelStatistics>> {
     try {
       return await this.get<ApiResponse<HotelStatistics>>(`/api/v2/hotels/${hotelId}/stats`);
@@ -559,7 +727,7 @@ class ApiService {
     }
   }
 
-  // ====================== GESTÃO DE QUARTOS ======================
+  // ====================== GESTÃO DE ROOM TYPES ======================
 
   async createRoomType(hotelId: string, data: RoomTypeCreateRequest): Promise<HotelOperationResponse> {
     try {
@@ -572,13 +740,99 @@ class ApiService {
     }
   }
 
-  async updateRoomType(hotelId: string, roomTypeId: string, data: RoomTypeUpdateRequest): Promise<HotelOperationResponse> {
+  async updateRoomType(roomTypeId: string, data: RoomTypeUpdateRequest): Promise<HotelOperationResponse> {
     try {
-      return await this.put<HotelOperationResponse>(`/api/v2/hotels/${hotelId}/room-types/${roomTypeId}`, data);
+      return await this.put<HotelOperationResponse>(`/api/v2/hotels/room-types/${roomTypeId}`, data);
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Erro ao atualizar tipo de quarto'
+      };
+    }
+  }
+
+  async getRoomTypeById(roomTypeId: string): Promise<ApiResponse<RoomType>> {
+    try {
+      return await this.get<ApiResponse<RoomType>>(`/api/v2/hotels/room-types/${roomTypeId}`);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Erro ao obter detalhes do tipo de quarto'
+      };
+    }
+  }
+
+  // ====================== FUNÇÃO deleteRoomType CORRIGIDA ======================
+
+  async deleteRoomType(roomTypeId: string): Promise<ApiResponse<{ message: string }>> {
+    console.log('🔍 API: deleteRoomType chamado com ID:', roomTypeId);
+    
+    // ✅ VALIDAÇÃO ROBUSTA DO ID
+    if (!roomTypeId || roomTypeId === 'undefined' || roomTypeId === 'null' || roomTypeId.trim() === '') {
+      console.error('❌ API deleteRoomType: ID inválido recebido:', roomTypeId);
+      return {
+        success: false,
+        error: 'ID do tipo de quarto inválido. Não pode ser undefined, null ou vazio.'
+      };
+    }
+
+    // ✅ VALIDAÇÃO DE FORMATO UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(roomTypeId)) {
+      console.error('❌ API deleteRoomType: Formato UUID inválido:', roomTypeId);
+      return {
+        success: false,
+        error: 'Formato do ID do tipo de quarto inválido. Deve ser um UUID válido.'
+      };
+    }
+
+    try {
+      console.log(`🗑️ API: Deletando room type com ID válido: ${roomTypeId}`);
+      
+      // ✅ CORREÇÃO: Usar apenas headers padrão CORS
+      const headers = await this.getAuthHeaders();
+      
+      console.log('🔐 Headers sendo enviados para delete:', Object.keys(headers));
+      
+      return await this.delete<ApiResponse<{ message: string }>>(
+        `/api/v2/hotels/room-types/${roomTypeId}`,
+        headers
+      );
+    } catch (error) {
+      console.error('❌ API deleteRoomType error:', error);
+      
+      // ✅ TRATAMENTO MELHORADO DE ERROS ESPECÍFICOS
+      if (error instanceof Error) {
+        if (error.message.includes('403')) {
+          return {
+            success: false,
+            error: 'Você não tem permissão para deletar este tipo de quarto. Verifique se você é o proprietário do hotel.'
+          };
+        } else if (error.message.includes('401')) {
+          return {
+            success: false,
+            error: 'Autenticação expirada. Faça login novamente.'
+          };
+        } else if (error.message.includes('404')) {
+          return {
+            success: false,
+            error: 'Tipo de quarto não encontrado. Pode já ter sido deletado.'
+          };
+        } else if (error.message.includes('CORS')) {
+          return {
+            success: false,
+            error: 'Erro de CORS. Verifique as configurações do servidor.'
+          };
+        }
+        return {
+          success: false,
+          error: error.message
+        };
+      }
+      
+      return {
+        success: false,
+        error: 'Erro ao desativar tipo de quarto. Verifique sua conexão.'
       };
     }
   }
@@ -595,6 +849,34 @@ class ApiService {
         success: false,
         error: error instanceof Error ? error.message : 'Erro ao listar tipos de quarto'
       };
+    }
+  }
+
+  // ✅ CORREÇÃO ADICIONAL: Esta função estava faltando
+  async getRoomTypeDetails(hotelId: string, roomTypeId: string): Promise<ApiResponse<RoomType>> {
+    try {
+      // Primeiro tentar buscar pelo endpoint específico
+      return await this.get<ApiResponse<RoomType>>(`/api/v2/hotels/${hotelId}/room-types/${roomTypeId}`);
+    } catch (error) {
+      try {
+        // Fallback: buscar todos e filtrar
+        const response = await this.getRoomTypesByHotel(hotelId);
+        if (response.success && Array.isArray(response.data)) {
+          const roomType = response.data.find((rt: any) => rt.id === roomTypeId || rt.roomTypeId === roomTypeId);
+          if (roomType) {
+            return {
+              success: true,
+              data: roomType
+            };
+          }
+        }
+        throw new Error('Tipo de quarto não encontrado');
+      } catch (fallbackError) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Erro ao obter detalhes do tipo de quarto'
+        };
+      }
     }
   }
 
@@ -630,100 +912,103 @@ class ApiService {
     return this.getRideDetails(rideId);
   }
 
-  createRideBooking(data: any) {
+  async createRideBooking(data: any) {
     return this.post('/api/rides/book', data);
   }
 
-  getDriverRides(params?: any) {
+  async getDriverRides(params?: any) {
     return this.get('/api/rides/driver', params);
   }
 
-  login(data: { email: string; password: string }) {
+  async login(data: { email: string; password: string }) {
     return this.post('/api/auth/login', data);
   }
 
-  register(data: any) {
+  async register(data: any) {
     return this.post('/api/auth/register', data);
   }
 
-  logout() {
+  async logout() {
     return this.post('/api/auth/logout');
   }
 
-  refreshToken() {
+  async refreshToken() {
     return this.post('/api/auth/refresh-token');
   }
 
-  getProfile() {
+  async getProfile() {
     return this.get('/api/auth/me');
   }
 
-  updateProfile(data: any) {
+  async updateProfile(data: any) {
     return this.post('/api/auth/update', data);
   }
 
-  uploadImage(file: File): Promise<UploadResponse> {
+  async uploadImage(file: File): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append("file", file);
 
     return fetch(`${this.baseURL}/api/upload`, {
       method: "POST",
       credentials: "include",
+      mode: 'cors',
       body: formData
     }).then(r => r.json());
   }
 
-  getNotifications(): Promise<NotificationsResponse> {
+  async getNotifications(): Promise<NotificationsResponse> {
     return this.get<NotificationsResponse>('/api/notifications');
   }
 
-  markNotificationAsRead(notificationId: string) {
+  async markNotificationAsRead(notificationId: string) {
     return this.post(`/api/notifications/${notificationId}/read`);
   }
 
-  getChatThread(threadId: string): Promise<ApiResponse<ChatThread>> {
+  async getChatThread(threadId: string): Promise<ApiResponse<ChatThread>> {
     return this.get<ApiResponse<ChatThread>>(`/api/chat/${threadId}`);
   }
 
-  sendChatMessage(threadId: string, message: string): Promise<SendMessageResponse> {
+  async sendChatMessage(threadId: string, message: string): Promise<SendMessageResponse> {
     return this.post<SendMessageResponse>(`/api/chat/${threadId}/send`, { message });
   }
 
-  getHotelStats(hotelId: string) {
+  async getHotelStats(hotelId: string) {
     return this.get(`/api/v2/hotels/${hotelId}/stats`);
   }
 
-  getHotelEvents(hotelId: string, params?: { status?: BookingStatus; upcoming?: boolean }) {
+  async getHotelEvents(hotelId: string, params?: { status?: BookingStatus; upcoming?: boolean }) {
     return this.get(`/api/v2/hotels/${hotelId}/events`, params);
   }
 
-  getChat(hotelId: string, params?: { threadId?: string; limit?: number }) {
+  async getChat(hotelId: string, params?: { threadId?: string; limit?: number }) {
     return this.get(`/api/v2/hotels/${hotelId}/chat`, params);
   }
 
-  cancelHotelBooking(bookingId: string) {
+  async cancelHotelBooking(bookingId: string) {
     return this.cancelBooking(bookingId);
   }
 
-  checkInHotelBooking(bookingId: string) {
+  async checkInHotelBooking(bookingId: string) {
     return this.post(`/api/v2/hotels/bookings/${bookingId}/check-in`);
   }
 
-  checkOutHotelBooking(bookingId: string) {
+  async checkOutHotelBooking(bookingId: string) {
     return this.post(`/api/v2/hotels/bookings/${bookingId}/check-out`);
   }
 
-  getMyHotelBookings(email: string, status?: BookingStatus): Promise<MyHotelBookingsResponse> {
+  async getMyHotelBookings(email: string, status?: BookingStatus): Promise<MyHotelBookingsResponse> {
     return this.getBookingsByEmail(email, status);
   }
 
-  getHotels() {
+  async getHotels() {
     return this.getAllHotels();
   }
 
   async testHotelsV2(): Promise<ApiResponse<{ message: string; count?: number }>> {
     try {
-      const response = await fetch(`${this.baseURL}/api/v2/hotels/search?location=Maputo&limit=1`);
+      const response = await fetch(`${this.baseURL}/api/v2/hotels/search?location=Maputo&limit=1`, {
+        mode: 'cors'
+      });
       const v2Working = response.ok;
       const v2Data = v2Working ? await response.json() : null;
       
@@ -756,17 +1041,6 @@ class ApiService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Erro ao obter preços'
-      };
-    }
-  }
-
-  async getRoomTypeDetails(hotelId: string, roomTypeId: string): Promise<ApiResponse<RoomType>> {
-    try {
-      return await this.get<ApiResponse<RoomType>>(`/api/v2/hotels/${hotelId}/room-types/${roomTypeId}`);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Erro ao obter detalhes do tipo de quarto'
       };
     }
   }
@@ -895,7 +1169,9 @@ class ApiService {
 
   async checkHealth(): Promise<{ success: boolean; services: Record<string, string> }> {
     try {
-      const response = await fetch(`${this.baseURL}/api/health`);
+      const response = await fetch(`${this.baseURL}/api/health`, {
+        mode: 'cors'
+      });
       if (response.ok) {
         const data = await response.json();
         return { success: true, services: data.services || {} };

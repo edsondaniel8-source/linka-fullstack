@@ -1,4 +1,4 @@
-// src/apps/hotels-app/pages/[hotelId]/rooms/edit/RoomEditPage.tsx
+// src/apps/hotels-app/pages/[hotelId]/room-types/edit/RoomTypeEditPage.tsx - VERSÃO CORRIGIDA
 import { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -15,11 +15,12 @@ import {
   ArrowLeft, Bed, DollarSign, Users, Building2,
   Image as ImageIcon, Check, Save, Trash2, Upload,
   Eye, AlertCircle, Calendar, Wifi, Tv, Wind,
-  Coffee, ShowerHead, Lock, Maximize2, Bath
+  Coffee, ShowerHead, Lock, Maximize2, Bath,
+  Minus, Plus, RefreshCw, Loader2
 } from 'lucide-react';
 import { apiService } from '@/services/api';
 import { useToast } from '@/shared/hooks/use-toast';
-import { formatPrice } from '@/apps/hotels-app/utils/hotelHelpers';
+import { useHotelData } from '../../../../hooks/useHotelData';
 import type { RoomType, RoomTypeUpdateRequest } from '@/types';
 
 // Definir constantes
@@ -56,8 +57,11 @@ const ROOM_AMENITIES = [
   { id: 'desk', label: 'Escritório', icon: Calendar }
 ];
 
-export default function RoomEditPage() {
-  const { hotelId, roomId } = useParams<{ hotelId: string; roomId: string }>();
+export default function RoomTypeEditPage() {
+  const { hotelId: urlHotelId, roomTypeId } = useParams<{ 
+    hotelId?: string; 
+    roomTypeId?: string 
+  }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -65,12 +69,55 @@ export default function RoomEditPage() {
   const [activeTab, setActiveTab] = useState('basic');
   const [loading, setLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
   const [images, setImages] = useState<string[]>([]);
   const [newImages, setNewImages] = useState<File[]>([]);
 
+  // 🔥 USAR useHotelData PARA GERENCIAMENTO CENTRALIZADO
+  const { 
+    hotel, 
+    selectedHotelId, 
+    selectHotelById, 
+    isLoading: hotelLoading,
+    getHotelName,
+    isHotelActive,
+    rooms,
+    formatPrice,
+    refetch: refetchHotelData
+  } = useHotelData(urlHotelId);
+
+  // 🔥 SINCRONIZAÇÃO AUTOMÁTICA
+  useEffect(() => {
+    if (urlHotelId && urlHotelId !== selectedHotelId) {
+      selectHotelById(urlHotelId);
+    }
+  }, [urlHotelId, selectedHotelId, selectHotelById]);
+
+  // Interface local para o formulário
+  interface RoomTypeFormData {
+    name: string;
+    description: string;
+    basePrice: number;
+    baseOccupancy: number;
+    maxOccupancy: number;
+    totalUnits: number;
+    availableUnits: number;
+    size: string;
+    bedType: string;
+    bedTypes: string[];
+    bathroomType: string;
+    extraAdultPrice: number;
+    extraChildPrice: number;
+    childrenPolicy: string;
+    isActive: boolean;
+    minNightsDefault: number;
+    amenities: string[];
+    images: string[];
+  }
+
   // Form data state
-  const [formData, setFormData] = useState<RoomTypeUpdateRequest>({
+  const [formData, setFormData] = useState<RoomTypeFormData>({
     name: '',
     description: '',
     basePrice: 0,
@@ -85,81 +132,139 @@ export default function RoomEditPage() {
     extraAdultPrice: 0,
     extraChildPrice: 0,
     childrenPolicy: '',
-    isActive: true
+    isActive: true,
+    minNightsDefault: 1,
+    amenities: [],
+    images: []
   });
 
-  // Buscar detalhes do quarto
-  const { data: room, isLoading: roomLoading, error: roomError } = useQuery({
-    queryKey: ['room-details', hotelId, roomId],
+  // 🔥 Verificar se hotelId existe
+  if (!urlHotelId || !roomTypeId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full p-8 text-center bg-white rounded-lg shadow-lg border border-gray-200">
+          <div className="mb-6">
+            <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-yellow-100 rounded-full">
+              <AlertCircle className="w-8 h-8 text-yellow-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">IDs Inválidos</h2>
+            <p className="text-gray-600">
+              O ID do hotel ou do tipo de quarto não foi fornecido corretamente.
+            </p>
+          </div>
+          <Button onClick={() => setLocation('/hotels')} className="w-full">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Voltar para Hotéis
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ Buscar detalhes do room type com tratamento melhorado
+  const { 
+    data: roomType, 
+    isLoading: roomLoading, 
+    error: roomError,
+    refetch: refetchRoomType
+  } = useQuery({
+    queryKey: ['room-type-details', roomTypeId],
     queryFn: async () => {
-      if (!hotelId || !roomId) throw new Error('Hotel ID e Room ID são obrigatórios');
-      
       try {
-        // Primeiro tenta buscar pelo endpoint específico
-        const response = await apiService.getRoomTypeDetails(hotelId, roomId);
+        const response = await apiService.getRoomTypeById(roomTypeId);
         
         if (response.success && response.data) {
           return response.data;
         }
-        
-        // Se não encontrar, tenta buscar na lista de quartos
-        const roomTypesResponse = await apiService.getRoomTypesByHotel(hotelId);
-        if (roomTypesResponse.success && roomTypesResponse.data) {
-          const roomInList = roomTypesResponse.data.find(
-            (r: RoomType) => r.id === roomId || r.room_type_id === roomId
-          );
-          
-          if (roomInList) {
-            return roomInList;
-          }
-        }
-        
-        throw new Error('Quarto não encontrado');
+        throw new Error(response.error || 'Tipo de quarto não encontrado');
       } catch (error: any) {
-        throw new Error(error.message || 'Erro ao carregar detalhes do quarto');
+        console.error('Erro ao carregar detalhes:', error);
+        throw new Error(error.message || 'Erro ao carregar detalhes do tipo de quarto');
       }
     },
-    enabled: !!hotelId && !!roomId,
+    enabled: !!roomTypeId,
+    staleTime: 30000, // 30 segundos
   });
 
-  // Buscar detalhes do hotel
-  const { data: hotel } = useQuery({
-    queryKey: ['hotel', hotelId],
-    queryFn: async () => {
-      const response = await apiService.getHotelById(hotelId!);
-      if (response.success) return response.data;
-      throw new Error(response.error);
-    },
-    enabled: !!hotelId,
-  });
-
-  // Inicializar form data quando os dados do quarto carregarem
+  // Inicializar form data quando os dados do room type carregarem
   useEffect(() => {
-    if (room) {
+    if (roomType) {
+      console.log('🔄 Inicializando formData com room type:', roomType);
+      
+      // Verificar se o room type está ativo
+      if (roomType.is_active === false) {
+        toast({
+          title: 'Tipo de quarto inativo',
+          description: 'Este tipo de quarto está marcado como inativo.',
+          variant: 'default',
+        });
+      }
+      
+      // 🔥 Converter campos do backend para o formato esperado
       setFormData({
-        name: room.name || '',
-        description: room.description || '',
-        basePrice: room.base_price || room.base_price || 0,
-        baseOccupancy: room.base_occupancy || room.base_occupancy || 2,
-        maxOccupancy: room.max_occupancy || room.max_occupancy || 2,
-        totalUnits: room.total_units || room.total_units || 1,
-        availableUnits: room.available_units || room.available_units || 1,
-        size: room.size || '',
-        bedType: room.bed_type || '',
-        bedTypes: room.bed_types || [],
-        bathroomType: room.bathroom_type || '',
-        extraAdultPrice: room.extra_adult_price || room.extra_adult_price || 0,
-        extraChildPrice: room.extra_child_price || room.extra_child_price || 0,
-        childrenPolicy: room.children_policy || '',
-        isActive: room.is_active !== false,
-        amenities: room.amenities || [],
-        images: room.images || []
+        name: roomType.name || '',
+        description: roomType.description || '',
+        basePrice: typeof roomType.base_price === 'string' 
+          ? parseFloat(roomType.base_price) 
+          : (roomType.base_price as number) || 0,
+        baseOccupancy: roomType.base_occupancy || 2,
+        maxOccupancy: roomType.max_occupancy || 2,
+        totalUnits: roomType.total_units || 1,
+        availableUnits: roomType.available_units || roomType.total_units || 1,
+        size: roomType.size || '',
+        bedType: roomType.bed_type || '',
+        bedTypes: roomType.bed_types || [],
+        bathroomType: roomType.bathroom_type || '',
+        extraAdultPrice: typeof roomType.extra_adult_price === 'string'
+          ? parseFloat(roomType.extra_adult_price)
+          : (roomType.extra_adult_price as number) || 0,
+        extraChildPrice: typeof roomType.extra_child_price === 'string'
+          ? parseFloat(roomType.extra_child_price)
+          : (roomType.extra_child_price as number) || 0,
+        childrenPolicy: roomType.children_policy || '',
+        isActive: roomType.is_active !== false,
+        minNightsDefault: roomType.min_nights_default || 1,
+        amenities: roomType.amenities || [],
+        images: roomType.images || []
       });
       
-      setSelectedAmenities(room.amenities || []);
-      setImages(room.images || []);
+      setSelectedAmenities(roomType.amenities || []);
+      setImages(roomType.images || []);
     }
-  }, [room]);
+  }, [roomType, toast]);
+
+  // ✅ CORREÇÃO: Função de refresh manual
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      console.log('🔄 Forçando refresh dos dados...');
+      
+      // Invalidar todas as queries relacionadas
+      await queryClient.invalidateQueries({ 
+        queryKey: ['room-type-details', roomTypeId] 
+      });
+      
+      // Refetch dos dados
+      await Promise.all([
+        refetchRoomType(),
+        refetchHotelData()
+      ]);
+      
+      toast({
+        title: 'Dados atualizados',
+        description: 'Os dados do tipo de quarto foram atualizados.',
+      });
+    } catch (error) {
+      console.error('Erro ao atualizar dados:', error);
+      toast({
+        title: 'Erro ao atualizar',
+        description: 'Não foi possível atualizar os dados. Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Handler para inputs
   const handleInputChange = (
@@ -211,69 +316,115 @@ export default function RoomEditPage() {
     setNewImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Mutation para atualizar quarto
+  // Incrementar/decrementar valores
+  const increment = (field: keyof RoomTypeFormData) => {
+    const currentValue = Number(formData[field]) || 0;
+    setFormData(prev => ({ ...prev, [field]: currentValue + 1 }));
+  };
+
+  const decrement = (field: keyof RoomTypeFormData) => {
+    const currentValue = Number(formData[field]) || 0;
+    if (currentValue > 0) {
+      setFormData(prev => ({ ...prev, [field]: currentValue - 1 }));
+    }
+  };
+
+  // ✅ CORREÇÃO: Mutation para atualizar room type melhorada
   const updateRoomMutation = useMutation({
-    mutationFn: async (data: RoomTypeUpdateRequest) => {
-      if (!hotelId || !roomId) throw new Error('IDs necessários não fornecidos');
+    mutationFn: async (data: RoomTypeFormData) => {
+      if (!roomTypeId) {
+        throw new Error('ID do tipo de quarto é inválido');
+      }
       
-      return await apiService.updateRoomType(hotelId, roomId, {
-        ...data,
-        amenities: selectedAmenities,
-        images: [...images, ...newImages.map(() => '')] // Em produção, URLs reais
-      });
+      // Converter para RoomTypeUpdateRequest
+      const updateData: RoomTypeUpdateRequest = {
+        name: data.name,
+        description: data.description || undefined,
+        basePrice: data.basePrice,
+        baseOccupancy: data.baseOccupancy,
+        maxOccupancy: data.maxOccupancy,
+        totalUnits: data.totalUnits,
+        availableUnits: data.availableUnits,
+        size: data.size || undefined,
+        bedType: data.bedType || undefined,
+        bedTypes: data.bedTypes.length > 0 ? data.bedTypes : undefined,
+        bathroomType: data.bathroomType || undefined,
+        extraAdultPrice: data.extraAdultPrice,
+        extraChildPrice: data.extraChildPrice,
+        childrenPolicy: data.childrenPolicy || undefined,
+        isActive: data.isActive,
+        minNightsDefault: data.minNightsDefault,
+        amenities: selectedAmenities.length > 0 ? selectedAmenities : undefined,
+        images: images.length > 0 ? images : undefined
+      };
+      
+      return await apiService.updateRoomType(roomTypeId, updateData);
     },
     onSuccess: (response) => {
       if (response.success) {
         toast({
           title: 'Sucesso!',
-          description: 'Quarto atualizado com sucesso.',
+          description: 'Tipo de quarto atualizado com sucesso.',
         });
         
-        // Invalidar queries relacionadas
-        queryClient.invalidateQueries({ queryKey: ['room-details', hotelId, roomId] });
-        queryClient.invalidateQueries({ queryKey: ['hotel-rooms', hotelId] });
-        queryClient.invalidateQueries({ queryKey: ['user-hotels'] });
+        // ✅ Invalidar cache completamente
+        queryClient.invalidateQueries({ queryKey: ['room-type-details', roomTypeId] });
+        queryClient.invalidateQueries({ queryKey: ['hotel-room-types', urlHotelId] });
+        queryClient.invalidateQueries({ queryKey: ['hotel', urlHotelId] });
+        queryClient.invalidateQueries({ queryKey: ['hotel-stats', urlHotelId] });
         
         // Redirecionar após sucesso
         setTimeout(() => {
-          setLocation(`/hotels/${hotelId}/rooms/${roomId}`);
+          setLocation(`/hotels/${urlHotelId}/room-types/${roomTypeId}`);
         }, 1500);
       } else {
         throw new Error(response.error);
       }
     },
     onError: (error: any) => {
+      console.error('Erro ao atualizar room type:', error);
       toast({
-        title: 'Erro',
-        description: error.message || 'Erro ao atualizar quarto',
+        title: 'Erro ao atualizar',
+        description: error.message || 'Erro ao atualizar tipo de quarto',
         variant: 'destructive',
       });
     },
   });
 
-  // Mutation para deletar quarto
+  // ✅ CORREÇÃO: Mutation para deletar room type aprimorada
   const deleteRoomMutation = useMutation({
     mutationFn: async () => {
-      // Em produção: apiService.deleteRoomType(hotelId!, roomId!)
-      // Simulando por enquanto
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return { success: true };
+      if (!roomTypeId) {
+        throw new Error('ID do tipo de quarto é inválido');
+      }
+      
+      const response = await apiService.deleteRoomType(roomTypeId);
+      if (!response.success) {
+        throw new Error(response.error);
+      }
+      return response;
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
       toast({
         title: 'Sucesso!',
-        description: 'Quarto deletado com sucesso.',
+        description: response.data?.message || 'Tipo de quarto removido com sucesso.',
       });
       
-      queryClient.invalidateQueries({ queryKey: ['hotel-rooms', hotelId] });
-      queryClient.invalidateQueries({ queryKey: ['user-hotels'] });
+      // ✅ Invalidar cache completamente antes de redirecionar
+      queryClient.invalidateQueries({ queryKey: ['hotel-room-types', urlHotelId] });
+      queryClient.invalidateQueries({ queryKey: ['room-type-details', roomTypeId] });
+      queryClient.invalidateQueries({ queryKey: ['hotel-stats', urlHotelId] });
       
-      setLocation(`/hotels/${hotelId}/rooms`);
+      // Redirecionar para a lista de room types
+      setTimeout(() => {
+        setLocation(`/hotels/${urlHotelId}/room-types`);
+      }, 500);
     },
     onError: (error: any) => {
+      console.error('Erro ao deletar room type:', error);
       toast({
-        title: 'Erro',
-        description: error.message || 'Erro ao deletar quarto',
+        title: 'Erro ao deletar',
+        description: error.message || 'Erro ao remover tipo de quarto',
         variant: 'destructive',
       });
     },
@@ -282,19 +433,51 @@ export default function RoomEditPage() {
   // Validar formulário
   const validateForm = () => {
     if (!formData.name.trim()) {
-      toast({ title: 'Erro', description: 'Nome do quarto é obrigatório', variant: 'destructive' });
+      toast({ 
+        title: 'Erro de validação', 
+        description: 'Nome do tipo de quarto é obrigatório', 
+        variant: 'destructive' 
+      });
       return false;
     }
     if (formData.basePrice <= 0) {
-      toast({ title: 'Erro', description: 'Preço base deve ser maior que zero', variant: 'destructive' });
+      toast({ 
+        title: 'Erro de validação', 
+        description: 'Preço base deve ser maior que zero', 
+        variant: 'destructive' 
+      });
       return false;
     }
     if (formData.totalUnits <= 0) {
-      toast({ title: 'Erro', description: 'Número de unidades deve ser maior que zero', variant: 'destructive' });
+      toast({ 
+        title: 'Erro de validação', 
+        description: 'Número de unidades deve ser maior que zero', 
+        variant: 'destructive' 
+      });
       return false;
     }
     if (formData.availableUnits > formData.totalUnits) {
-      toast({ title: 'Erro', description: 'Unidades disponíveis não podem ser maiores que unidades totais', variant: 'destructive' });
+      toast({ 
+        title: 'Erro de validação', 
+        description: 'Unidades disponíveis não podem ser maiores que unidades totais', 
+        variant: 'destructive' 
+      });
+      return false;
+    }
+    if (formData.baseOccupancy <= 0) {
+      toast({ 
+        title: 'Erro de validação', 
+        description: 'Ocupação base deve ser maior que zero', 
+        variant: 'destructive' 
+      });
+      return false;
+    }
+    if (formData.maxOccupancy < formData.baseOccupancy) {
+      toast({ 
+        title: 'Erro de validação', 
+        description: 'Ocupação máxima não pode ser menor que ocupação base', 
+        variant: 'destructive' 
+      });
       return false;
     }
     return true;
@@ -305,28 +488,41 @@ export default function RoomEditPage() {
     if (!validateForm()) return;
     
     setLoading(true);
-    updateRoomMutation.mutate(formData);
-    setLoading(false);
+    updateRoomMutation.mutate(formData, {
+      onSettled: () => setLoading(false)
+    });
   };
 
   // Handle delete
   const handleDelete = () => {
-    if (!confirm('Tem certeza que deseja excluir este tipo de quarto? Esta ação não pode ser desfeita.')) {
+    if (!roomTypeId) {
+      toast({
+        title: 'Erro',
+        description: 'ID do tipo de quarto inválido',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    if (!window.confirm('Tem certeza que deseja excluir este tipo de quarto? Esta ação não pode ser desfeita.')) {
       return;
     }
     
     setIsDeleting(true);
-    deleteRoomMutation.mutate();
-    setIsDeleting(false);
+    deleteRoomMutation.mutate(undefined, {
+      onSettled: () => setIsDeleting(false)
+    });
   };
 
-  // Loading state
-  if (roomLoading) {
+  // 🔥 Loading state combinado
+  const isLoading = hotelLoading || roomLoading;
+
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando detalhes do quarto...</p>
+          <Loader2 className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">Carregando detalhes do tipo de quarto...</p>
         </div>
       </div>
     );
@@ -340,26 +536,32 @@ export default function RoomEditPage() {
           <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-red-100 rounded-full">
             <AlertCircle className="h-8 w-8 text-red-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Quarto não encontrado</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Tipo de quarto não encontrado</h2>
           <p className="text-gray-600 mb-6">
-            {roomError instanceof Error ? roomError.message : 'O quarto solicitado não existe ou foi removido.'}
+            {roomError instanceof Error ? roomError.message : 'O tipo de quarto solicitado não existe ou foi removido.'}
           </p>
           <div className="flex flex-col gap-3">
-            <Link href={`/hotels/${hotelId}/rooms`}>
+            <Link href={`/hotels/${urlHotelId}/room-types`}>
               <Button className="w-full">
-                Ver Todos os Quartos
+                Ver Todos os Tipos de Quarto
               </Button>
             </Link>
-            <Link href="/hotels/dashboard">
-              <Button variant="outline" className="w-full">
-                Voltar ao Dashboard
-              </Button>
-            </Link>
+            <Button 
+              variant="outline" 
+              className="w-full"
+              onClick={() => refetchRoomType()}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Tentar Novamente
+            </Button>
           </div>
         </div>
       </div>
     );
   }
+
+  const hotelName = getHotelName(hotel);
+  const isHotelActiveValue = isHotelActive(hotel);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-8">
@@ -367,21 +569,37 @@ export default function RoomEditPage() {
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
           <div className="flex items-center space-x-3">
-            <Link href={`/hotels/${hotelId}/rooms/${roomId}`}>
+            <Link href={`/hotels/${urlHotelId}/room-types/${roomTypeId}`}>
               <Button variant="outline" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Voltar
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Editar Tipo de Quarto</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-gray-900">Editar Tipo de Quarto</h1>
+                {!formData.isActive && (
+                  <Badge variant="secondary">Inativo</Badge>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  title="Atualizar dados"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
               <div className="flex items-center space-x-2 mt-1">
                 <p className="text-gray-600">
-                  {hotel?.name || `Hotel ID: ${hotelId}`}
+                  Hotel: {hotelName}
                 </p>
-                <Badge variant={formData.isActive ? 'default' : 'secondary'}>
-                  {formData.isActive ? 'Ativo' : 'Inativo'}
-                </Badge>
+                {!isHotelActiveValue && (
+                  <Badge variant="destructive" className="text-xs">
+                    Hotel Inativo
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
@@ -394,13 +612,13 @@ export default function RoomEditPage() {
             >
               {isDeleting || deleteRoomMutation.isPending ? (
                 <>
-                  <div className="animate-spin mr-2 h-4 w-4 border-b-2 border-white rounded-full" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Excluindo...
                 </>
               ) : (
                 <>
                   <Trash2 className="mr-2 h-4 w-4" />
-                  Excluir Quarto
+                  Excluir Tipo de Quarto
                 </>
               )}
             </Button>
@@ -411,7 +629,7 @@ export default function RoomEditPage() {
             >
               {loading || updateRoomMutation.isPending ? (
                 <>
-                  <div className="animate-spin mr-2 h-4 w-4 border-b-2 border-white rounded-full" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Salvando...
                 </>
               ) : (
@@ -423,6 +641,19 @@ export default function RoomEditPage() {
             </Button>
           </div>
         </div>
+
+        {/* 🔥 Aviso se hotel estiver inativo */}
+        {!isHotelActiveValue && (
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <p className="text-sm text-yellow-800 flex items-center">
+              <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
+              <span>
+                <strong>Atenção:</strong> Este hotel está inativo. Mesmo que o tipo de quarto esteja ativo, 
+                ele não estará disponível para reservas até que o hotel seja ativado.
+              </span>
+            </p>
+          </div>
+        )}
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -446,7 +677,7 @@ export default function RoomEditPage() {
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Nome do Quarto *</Label>
+                    <Label htmlFor="name">Nome do Tipo de Quarto *</Label>
                     <Input
                       id="name"
                       name="name"
@@ -477,9 +708,9 @@ export default function RoomEditPage() {
                   <Textarea
                     id="description"
                     name="description"
-                    value={formData.description || ''}
+                    value={formData.description}
                     onChange={handleInputChange}
-                    placeholder="Descreva as características do quarto..."
+                    placeholder="Descreva as características do tipo de quarto..."
                     rows={4}
                   />
                 </div>
@@ -507,7 +738,7 @@ export default function RoomEditPage() {
                   <div className="space-y-2">
                     <Label htmlFor="bathroomType">Tipo de Banheiro</Label>
                     <Select
-                      value={formData.bathroomType || ''}
+                      value={formData.bathroomType}
                       onValueChange={(value) => handleSelectChange('bathroomType', value)}
                     >
                       <SelectTrigger className="h-12">
@@ -524,25 +755,45 @@ export default function RoomEditPage() {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="childrenPolicy">Política para Crianças</Label>
-                    <Input
-                      id="childrenPolicy"
-                      name="childrenPolicy"
-                      value={formData.childrenPolicy || ''}
-                      onChange={handleInputChange}
-                      placeholder="Ex: Crianças até 12 anos: 50% desconto"
-                      className="h-12"
-                    />
+                    <Label htmlFor="minNightsDefault">Estadia Mínima (noites)</Label>
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => decrement('minNightsDefault')}
+                        disabled={formData.minNightsDefault <= 1}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <Input
+                        id="minNightsDefault"
+                        name="minNightsDefault"
+                        type="number"
+                        min="1"
+                        value={formData.minNightsDefault}
+                        onChange={handleInputChange}
+                        className="h-12 text-center"
+                      />
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => increment('minNightsDefault')}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div>
-                    <Label className="font-medium">Status do Quarto</Label>
+                    <Label className="font-medium">Status do Tipo de Quarto</Label>
                     <p className="text-sm text-gray-600">
                       {formData.isActive 
-                        ? 'Quarto está ativo e visível para reservas' 
-                        : 'Quarto está inativo e não visível para reservas'
+                        ? 'Tipo de quarto está ativo e visível para reservas' 
+                        : 'Tipo de quarto está inativo e não visível para reservas'
                       }
                     </p>
                   </div>
@@ -561,45 +812,84 @@ export default function RoomEditPage() {
               <CardHeader>
                 <CardTitle>Capacidade e Unidades</CardTitle>
                 <CardDescription>
-                  Configure a capacidade do quarto e disponibilidade
+                  Configure a capacidade do tipo de quarto e disponibilidade
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="baseOccupancy">Ocupação Base</Label>
-                    <div className="relative">
-                      <Input
-                        id="baseOccupancy"
-                        name="baseOccupancy"
-                        type="number"
-                        min="1"
-                        value={formData.baseOccupancy}
-                        onChange={handleInputChange}
-                        className="h-12 pl-10"
-                      />
-                      <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => decrement('baseOccupancy')}
+                        disabled={formData.baseOccupancy <= 1}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <div className="relative flex-1">
+                        <Input
+                          id="baseOccupancy"
+                          name="baseOccupancy"
+                          type="number"
+                          min="1"
+                          value={formData.baseOccupancy}
+                          onChange={handleInputChange}
+                          className="h-12 text-center"
+                        />
+                        <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      </div>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => increment('baseOccupancy')}
+                        disabled={formData.baseOccupancy >= formData.maxOccupancy}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-500 text-center">
                       Número de hóspedes incluídos no preço base
                     </p>
                   </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="maxOccupancy">Ocupação Máxima</Label>
-                    <div className="relative">
-                      <Input
-                        id="maxOccupancy"
-                        name="maxOccupancy"
-                        type="number"
-                        min="1"
-                        value={formData.maxOccupancy}
-                        onChange={handleInputChange}
-                        className="h-12 pl-10"
-                      />
-                      <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => decrement('maxOccupancy')}
+                        disabled={formData.maxOccupancy <= formData.baseOccupancy}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <div className="relative flex-1">
+                        <Input
+                          id="maxOccupancy"
+                          name="maxOccupancy"
+                          type="number"
+                          min={formData.baseOccupancy}
+                          value={formData.maxOccupancy}
+                          onChange={handleInputChange}
+                          className="h-12 text-center"
+                        />
+                        <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      </div>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => increment('maxOccupancy')}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-500 text-center">
                       Número máximo de hóspedes permitidos
                     </p>
                   </div>
@@ -608,39 +898,78 @@ export default function RoomEditPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="totalUnits">Unidades Totais *</Label>
-                    <div className="relative">
-                      <Input
-                        id="totalUnits"
-                        name="totalUnits"
-                        type="number"
-                        min="1"
-                        value={formData.totalUnits}
-                        onChange={handleInputChange}
-                        className="h-12 pl-10"
-                      />
-                      <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => decrement('totalUnits')}
+                        disabled={formData.totalUnits <= 1}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <div className="relative flex-1">
+                        <Input
+                          id="totalUnits"
+                          name="totalUnits"
+                          type="number"
+                          min="1"
+                          value={formData.totalUnits}
+                          onChange={handleInputChange}
+                          className="h-12 text-center"
+                        />
+                        <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      </div>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => increment('totalUnits')}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-500 text-center">
                       Número total de quartos deste tipo no hotel
                     </p>
                   </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="availableUnits">Unidades Disponíveis</Label>
-                    <div className="relative">
-                      <Input
-                        id="availableUnits"
-                        name="availableUnits"
-                        type="number"
-                        min="0"
-                        max={formData.totalUnits}
-                        value={formData.availableUnits}
-                        onChange={handleInputChange}
-                        className="h-12 pl-10"
-                      />
-                      <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => decrement('availableUnits')}
+                        disabled={formData.availableUnits <= 0}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <div className="relative flex-1">
+                        <Input
+                          id="availableUnits"
+                          name="availableUnits"
+                          type="number"
+                          min="0"
+                          max={formData.totalUnits}
+                          value={formData.availableUnits}
+                          onChange={handleInputChange}
+                          className="h-12 text-center"
+                        />
+                        <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      </div>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => increment('availableUnits')}
+                        disabled={formData.availableUnits >= formData.totalUnits}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-500 text-center">
                       Número de quartos disponíveis para reserva
                     </p>
                   </div>
@@ -652,8 +981,9 @@ export default function RoomEditPage() {
                     <div>
                       <h4 className="font-medium text-blue-800">Resumo de Capacidade</h4>
                       <p className="text-sm text-blue-700">
-                        Este quarto acomoda {formData.baseOccupancy}-{formData.maxOccupancy} pessoas
+                        Este tipo de quarto acomoda {formData.baseOccupancy}-{formData.maxOccupancy} pessoas
                         em {formData.availableUnits}/{formData.totalUnits} unidades disponíveis.
+                        Estadia mínima: {formData.minNightsDefault} noite(s).
                       </p>
                     </div>
                   </div>
@@ -666,7 +996,7 @@ export default function RoomEditPage() {
           <TabsContent value="amenities" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Comodidades do Quarto</CardTitle>
+                <CardTitle>Comodidades do Tipo de Quarto</CardTitle>
                 <CardDescription>
                   Selecione as comodidades disponíveis neste tipo de quarto
                 </CardDescription>
@@ -678,9 +1008,10 @@ export default function RoomEditPage() {
                     const isSelected = selectedAmenities.includes(amenity.id);
                     
                     return (
-                      <div
+                      <button
                         key={amenity.id}
-                        className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                        type="button"
+                        className={`border rounded-lg p-4 cursor-pointer transition-all w-full text-left ${
                           isSelected
                             ? 'border-blue-500 bg-blue-50'
                             : 'border-gray-200 hover:border-gray-300'
@@ -696,7 +1027,7 @@ export default function RoomEditPage() {
                             <Check className="h-4 w-4 text-blue-500" />
                           )}
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -727,7 +1058,7 @@ export default function RoomEditPage() {
               <CardHeader>
                 <CardTitle>Configuração de Preços</CardTitle>
                 <CardDescription>
-                  Defina os preços e tarifas do quarto
+                  Defina os preços e tarifas do tipo de quarto
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -778,7 +1109,7 @@ export default function RoomEditPage() {
                         type="number"
                         min="0"
                         step="0.01"
-                        value={formData.extraAdultPrice || 0}
+                        value={formData.extraAdultPrice}
                         onChange={handleInputChange}
                         className="h-12 pl-10"
                       />
@@ -798,7 +1129,7 @@ export default function RoomEditPage() {
                         type="number"
                         min="0"
                         step="0.01"
-                        value={formData.extraChildPrice || 0}
+                        value={formData.extraChildPrice}
                         onChange={handleInputChange}
                         className="h-12 pl-10"
                       />
@@ -816,8 +1147,8 @@ export default function RoomEditPage() {
                       <h4 className="font-medium text-green-800">Exemplo de Cálculo</h4>
                       <p className="text-sm text-green-700">
                         {formData.maxOccupancy} pessoas por {formatPrice(formData.basePrice)} +{' '}
-                        {formData.extraAdultPrice ? `${formatPrice(formData.extraAdultPrice)} por adulto extra` : ''}{' '}
-                        {formData.extraChildPrice ? `${formatPrice(formData.extraChildPrice)} por criança extra` : ''}
+                        {formData.extraAdultPrice > 0 ? `${formatPrice(formData.extraAdultPrice)} por adulto extra` : ''}{' '}
+                        {formData.extraChildPrice > 0 ? `${formatPrice(formData.extraChildPrice)} por criança extra` : ''}
                       </p>
                     </div>
                   </div>
@@ -830,9 +1161,9 @@ export default function RoomEditPage() {
           <TabsContent value="images" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Imagens do Quarto</CardTitle>
+                <CardTitle>Imagens do Tipo de Quarto</CardTitle>
                 <CardDescription>
-                  Adicione ou remova imagens do seu quarto
+                  Adicione ou remova imagens do seu tipo de quarto
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -878,6 +1209,7 @@ export default function RoomEditPage() {
                           />
                           <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
                             <button
+                              type="button"
                               onClick={() => removeNewImage(index)}
                               className="bg-red-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
                               title="Remover imagem"
@@ -907,12 +1239,13 @@ export default function RoomEditPage() {
                       {images.map((image, index) => (
                         <div key={`existing-${index}`} className="relative group">
                           <img
-                            src={image.startsWith('http') ? image : `https://via.placeholder.com/300x200?text=Quarto+${index + 1}`}
-                            alt={`Quarto imagem ${index + 1}`}
+                            src={image.startsWith('http') ? image : `https://via.placeholder.com/300x200?text=Tipo+Quarto+${index + 1}`}
+                            alt={`Tipo de quarto imagem ${index + 1}`}
                             className="w-full h-48 object-cover rounded-lg"
                           />
                           <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
                             <button
+                              type="button"
                               onClick={() => removeImage(index)}
                               className="bg-red-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
                               title="Remover imagem"
@@ -937,7 +1270,7 @@ export default function RoomEditPage() {
                       <h4 className="font-medium text-blue-800">Dicas para Imagens</h4>
                       <ul className="text-sm text-blue-700 list-disc list-inside mt-1">
                         <li>Use imagens de alta qualidade e boa iluminação</li>
-                        <li>Mostre diferentes ângulos do quarto</li>
+                        <li>Mostre diferentes ângulos do tipo de quarto</li>
                         <li>Inclua fotos do banheiro e das comodidades</li>
                         <li>Mantenha um estilo consistente entre as imagens</li>
                       </ul>
@@ -959,14 +1292,27 @@ export default function RoomEditPage() {
                  updateRoomMutation.isSuccess ? 'Alterações salvas com sucesso!' :
                  'Revise as alterações antes de salvar'}
               </p>
+              {deleteRoomMutation.isSuccess && (
+                <p className="text-sm text-green-600 mt-1">
+                  Tipo de quarto excluído com sucesso!
+                </p>
+              )}
             </div>
             
             <div className="flex space-x-3">
-              <Link href={`/hotels/${hotelId}/rooms/${roomId}`}>
+              <Link href={`/hotels/${urlHotelId}/room-types/${roomTypeId}`}>
                 <Button variant="outline">
                   Cancelar
                 </Button>
               </Link>
+              <Button 
+                onClick={handleRefresh}
+                variant="outline"
+                disabled={refreshing}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Atualizando...' : 'Atualizar Dados'}
+              </Button>
               <Button 
                 onClick={handleSubmit}
                 disabled={loading || updateRoomMutation.isPending}
@@ -974,7 +1320,7 @@ export default function RoomEditPage() {
               >
                 {loading || updateRoomMutation.isPending ? (
                   <>
-                    <div className="animate-spin mr-2 h-4 w-4 border-b-2 border-white rounded-full" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Salvando...
                   </>
                 ) : (

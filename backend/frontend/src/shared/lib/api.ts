@@ -568,17 +568,17 @@ class ApiService {
   }
 
   async getRoomById(roomId: string): Promise<any> {
-    return this.request<any>('GET', `/rooms/${roomId}`);
+    return this.request<any>('GET', `/room-types/${roomId}`);
   }
 
   async updateRoom(roomId: string, roomData: any): Promise<any> {
     // ✅ CORREÇÃO 8: Adicionar updatedBy
     const roomDataWithUpdate = await this.attachUpdatedBy(roomData);
-    return this.request<any>('PUT', `/rooms/${roomId}`, roomDataWithUpdate);
+    return this.request<any>('PUT', `/room-types/${roomId}`, roomDataWithUpdate);
   }
 
   async deleteRoom(roomId: string): Promise<void> {
-    return this.request<void>('DELETE', `/rooms/${roomId}`);
+    return this.request<void>('DELETE', `/room-types/${roomId}`);
   }
 
   // ===== ROOM TYPES API =====
